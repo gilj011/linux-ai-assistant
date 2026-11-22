@@ -1,0 +1,27 @@
+# Linux AI Assistant — Comandos Permitidos e Regras de Execução
+
+# Comandos de leitura e diagnóstico (executados para coletar contexto de sistema)
+diagnostic_commands:
+  - "uname -srm"
+  - "cat /etc/os-release"
+  - "lsblk -o NAME,SIZE,TYPE,MOUNTPOINT"
+  - "free -h"
+  - "ip -br a"
+  - "systemctl status"
+
+# Comandos que alteram o sistema (exigem validação prévia e confirmação explícita do usuário)
+allowed_actions:
+  - "apt update"
+  - "apt install"
+  - "apt upgrade"
+  - "systemctl restart"
+  - "systemctl enable"
+  - "systemctl disable"
+
+# Padrões explicitamente bloqueados pelo validador
+blocked_patterns:
+  - "rm -rf /"
+  - "mkfs"
+  - "dd if="
+  - "| bash"
+  - "| sh"
