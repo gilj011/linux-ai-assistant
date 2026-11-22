@@ -1,5 +1,6 @@
 """
 Interface de Linha de Comando (CLI) do kored — Linux Systems Intelligence.
+Suporta modos Somente Leitura e Assistido com autorizacao explicita de acoes.
 """
 
 import argparse
@@ -19,7 +20,9 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
+from src.action_parser import ActionParser, ProposedAction
 from src.diagnostics import DiagnosticEngine, DiagnosticReport
+from src.executor import ControlledExecutor, ExecutionMode
 from src.ollama_client import OllamaClient
 from src.os_inspector import OSInspector, SystemContext
 from src.prompt_builder import PromptBuilder
@@ -28,19 +31,36 @@ console = Console()
 
 
 class KoredCLI:
-    """Controlador da interface de terminal do kored."""
+    """Controlador da interface de terminal do kored com chave seletora de execucao."""
 
     MAX_HISTORY_MESSAGES = 20
 
-    def __init__(self, model: str = "qwen2.5:7b", base_url: Optional[str] = None):
+    def __init__(
+        self,
+        model: str = "qwen2.5:7b",
+        mode: ExecutionMode = ExecutionMode.READONLY,
+        base_url: Optional[str] = None,
+    ):
         self.context: SystemContext = OSInspector.get_system_context()
         self.client = OllamaClient(base_url=base_url, model=model)
-        self.system_prompt = PromptBuilder.build_system_prompt(self.context)
+        self.executor = ControlledExecutor()
+        self.mode = mode
+        self.system_prompt = PromptBuilder.build_system_prompt(self.context, mode=self.mode)
         self.conversation_history: List[Dict[str, str]] = []
         self.reset_conversation()
 
+    def set_mode(self, new_mode: ExecutionMode) -> None:
+        """Altera a chave seletora de modo e atualiza o prompt do sistema."""
+        self.mode = new_mode
+        self.system_prompt = PromptBuilder.build_system_prompt(self.context, mode=self.mode)
+        if self.conversation_history and self.conversation_history[0]["role"] == "system":
+            self.conversation_history[0]["content"] = self.system_prompt
+
+        mode_name = "ASSISTIDO (Aprovacao Explicita)" if self.mode == ExecutionMode.ASSISTED else "SEGURO (Somente Leitura)"
+        console.print(f"[bold cyan]Chave Seletora alterada para:[/bold cyan] [bold yellow]{mode_name}[/bold yellow]\n")
+
     def reset_conversation(self) -> None:
-        """Reinicia o historico da conversa mantendo o prompt do sistema."""
+        """Reinicia o historico da conversa mantendo o prompt do sistema correspondente ao modo."""
         self.conversation_history = [
             {"role": "system", "content": self.system_prompt}
         ]
@@ -52,13 +72,19 @@ class KoredCLI:
             self.conversation_history = [system_msg] + self.conversation_history[-14:]
 
     def print_banner(self) -> None:
-        """Exibe o cabecalho tecnico do kored com as informacoes do sistema."""
+        """Exibe o cabecalho tecnico do kored com as informacoes do sistema e o modo ativo."""
+        mode_label = "ASSISTIDO [Aprovacao Humana]" if self.mode == ExecutionMode.ASSISTED else "SEGURO [Somente Leitura]"
+        mode_style = "bold yellow" if self.mode == ExecutionMode.ASSISTED else "bold green"
+
         header_text = Text()
         header_text.append("kored ", style="bold cyan")
         header_text.append("— Linux Systems Intelligence & Assistant\n", style="bold white")
         header_text.append(f"Host: {self.context.distro_name} {self.context.distro_version} ", style="green")
-        header_text.append(f"(Kernel {self.context.kernel} / {self.context.arch}) | ", style="dim")
-        header_text.append(f"Model: {self.client.model}", style="yellow")
+        header_text.append(f"(Kernel {self.context.kernel} / {self.context.arch})\n", style="dim")
+        header_text.append("Modo: ", style="dim")
+        header_text.append(mode_label, style=mode_style)
+        header_text.append(" | Modelo: ", style="dim")
+        header_text.append(f"{self.client.model}", style="yellow")
 
         console.print(Panel(header_text, border_style="cyan", padding=(1, 2)))
 
@@ -77,14 +103,67 @@ class KoredCLI:
             return False
         return True
 
+    def _handle_proposed_actions(self, full_response: str) -> None:
+        """Analisa respostas em busca de acoes propostas e gerencia a autorizacao do usuario."""
+        actions = ActionParser.extract_actions(full_response)
+        if not actions:
+            return
+
+        if self.mode == ExecutionMode.READONLY:
+            console.print(
+                Panel(
+                    "O kored sugeriu uma acao de sistema, mas o modo ativo e 'SEGURO (Somente Leitura)'.\n"
+                    "Nenhuma alteracao sera realizada. Para autorizar acoes sob aprovacao, mude para 'modo assistido'.",
+                    title="Acao Nao Executada [Modo Somente Leitura]",
+                    border_style="yellow",
+                )
+            )
+            return
+
+        for action in actions:
+            console.print(
+                Panel(
+                    action.summary(),
+                    title="[AUTORIZACAO EXPLICITA REQUERIDA] Proposta de Acao do kored",
+                    border_style="bold yellow",
+                )
+            )
+
+            try:
+                confirmation = Prompt.ask(
+                    "[bold yellow]Deseja que o kored execute esta acao no sistema? [s/N][/bold yellow]"
+                ).strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                confirmation = "n"
+
+            if confirmation in ["s", "sim", "y", "yes"]:
+                if action.action_type == "write_file" and action.path:
+                    ok, msg = self.executor.write_file(action.path, action.content or "")
+                    if ok:
+                        console.print(f"[bold green][SUCESSO][/bold green] {msg}\n")
+                        self.conversation_history.append({"role": "system", "content": f"[Acao executada com sucesso]: {msg}"})
+                    else:
+                        console.print(f"[bold red][FALHA][/bold red] {msg}\n")
+                elif action.action_type == "run_command" and action.command:
+                    console.print(f"[dim]Executando: {action.command}...[/dim]")
+                    ok, msg = self.executor.execute_command(action.command)
+                    if ok:
+                        console.print(Panel(msg, title=f"Saida: {action.command}", border_style="green"))
+                        self.conversation_history.append({"role": "system", "content": f"[Comando executado]: {msg}"})
+                    else:
+                        console.print(Panel(msg, title="Erro na execucao do comando", border_style="red"))
+            else:
+                console.print("[dim]Acao cancelada pelo usuario. Nada foi alterado no sistema.[/dim]\n")
+                self.conversation_history.append({"role": "system", "content": "[Acao cancelada pelo usuario]"})
+
     def ask_streaming(self, question: str, is_explain_mode: bool = False) -> None:
-        """Processa a consulta com streaming e memoria de contexto."""
+        """Processa a consulta com streaming, memoria de contexto e deteccao de acoes."""
         if is_explain_mode:
             user_content = PromptBuilder.build_explain_command_prompt(question)
             title = f"[bold cyan]kored[/bold cyan] :: Inspecao de comando: [bold yellow]{question}[/bold yellow]"
         else:
             user_content = question
-            title = f"[bold cyan]kored[/bold cyan] :: Consulta: [bold yellow]{question}[/bold yellow]"
+            title = f"[bold cyan]kored[/bold cyan] :: Interacao: [bold yellow]{question}[/bold yellow]"
 
         console.print()
         console.rule(title)
@@ -107,15 +186,17 @@ class KoredCLI:
 
             full_response = first_token
             if full_response:
-                with Live(Markdown(full_response), console=console, refresh_per_second=10) as live:
+                with Live(Markdown(ActionParser.strip_action_blocks(full_response)), console=console, refresh_per_second=10) as live:
                     for token in generator:
                         full_response += token
-                        live.update(Markdown(full_response))
+                        clean_text = ActionParser.strip_action_blocks(full_response)
+                        live.update(Markdown(clean_text or full_response))
             else:
                 console.print("[yellow][Nenhuma resposta gerada pelo modelo][/yellow]")
 
             if full_response and not full_response.startswith("\n[Erro"):
                 self.conversation_history.append({"role": "assistant", "content": full_response})
+                self._handle_proposed_actions(full_response)
 
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido][/yellow]")
@@ -141,7 +222,6 @@ class KoredCLI:
 
         console.rule(title)
         
-        # Exibe resumo das evidencias coletadas
         summary_lines = [f"Alvo inspecionado: {target_desc}", f"Sondas executadas: {len(report.results)}"]
         for res in report.results:
             status_text = "[green]OK[/green]" if res.success else "[yellow]Aviso/Falha[/yellow]"
@@ -169,15 +249,16 @@ class KoredCLI:
 
             full_response = first_token
             if full_response:
-                with Live(Markdown(full_response), console=console, refresh_per_second=10) as live:
+                with Live(Markdown(ActionParser.strip_action_blocks(full_response)), console=console, refresh_per_second=10) as live:
                     for token in generator:
                         full_response += token
-                        live.update(Markdown(full_response))
+                        live.update(Markdown(ActionParser.strip_action_blocks(full_response)))
             else:
                 console.print("[yellow][Nenhum diagnostico gerado pelo modelo][/yellow]")
 
             if full_response and not full_response.startswith("\n[Erro"):
                 self.conversation_history.append({"role": "assistant", "content": full_response})
+                self._handle_proposed_actions(full_response)
 
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido][/yellow]")
@@ -193,7 +274,7 @@ class KoredCLI:
         self.check_ollama_status()
 
         console.print(
-            "[dim]Comandos: 'sair' | 'diag' (saude geral) | 'diag <servico>' | 'limpar' | 'info' | 'explain <cmd>'.[/dim]\n"
+            "[dim]Comandos: 'sair' | 'modo [seguro|assistido]' | 'diag' | 'diag <servico>' | 'limpar' | 'info'.[/dim]\n"
         )
 
         while True:
@@ -214,9 +295,23 @@ class KoredCLI:
                 self.reset_conversation()
                 console.print("[cyan]Contexto da sessao reiniciado.[/cyan]\n")
                 continue
+            elif lower_cmd in ["modo", "mode"]:
+                new_mode = ExecutionMode.ASSISTED if self.mode == ExecutionMode.READONLY else ExecutionMode.READONLY
+                self.set_mode(new_mode)
+                continue
+            elif lower_cmd in ["modo seguro", "modo readonly", "safe"]:
+                self.set_mode(ExecutionMode.READONLY)
+                continue
+            elif lower_cmd in ["modo assistido", "modo exec", "assist"]:
+                self.set_mode(ExecutionMode.ASSISTED)
+                continue
             elif lower_cmd == "info":
                 turns = (len(self.conversation_history) - 1) // 2
-                ctx_summary = self.context.to_prompt_context() + f"\n- Turnos de contexto ativos: {max(0, turns)}"
+                ctx_summary = (
+                    self.context.to_prompt_context() +
+                    f"\n- Modo Operacional: {self.mode.value.upper()}" +
+                    f"\n- Turnos de contexto ativos: {max(0, turns)}"
+                )
                 console.print(Panel(ctx_summary, title="kored :: Informacoes do Ambiente", border_style="green"))
                 continue
             elif lower_cmd == "diag":
@@ -239,13 +334,14 @@ class KoredCLI:
             elif lower_cmd in ["ajuda", "help", "?"]:
                 console.print(
                     "[bold]Instrucoes de uso do kored:[/bold]\n"
-                    "- Digite qualquer consulta tecnica de comandos ou administracao Linux\n"
-                    "- Digite [italic]'diag'[/italic] para executar varredura diagnostica de saude do sistema\n"
-                    "- Digite [italic]'diag <servico>'[/italic] para diagnosticar servico systemd (ex: diag nginx)\n"
-                    "- Use [italic]'explain <comando>'[/italic] para dissecar parametros e mecanica\n"
-                    "- Digite [italic]'limpar'[/italic] para reiniciar a memoria da conversa\n"
-                    "- Digite [italic]'info'[/italic] para telemetria da distro e kernel\n"
-                    "- Digite [italic]'sair'[/italic] para finalizar."
+                    "- Digite consultas sobre comandos, diagnosticos ou administracao Linux\n"
+                    "- [italic]'modo seguro'[/italic] / [italic]'modo assistido'[/italic]: alterna a chave seletora de execucao\n"
+                    "- No modo assistido, kored pode propor criacao de arquivos e comandos com autorizacao humana [s/N]\n"
+                    "- [italic]'diag'[/italic]: varredura diagnostica de saude do sistema\n"
+                    "- [italic]'diag <servico>'[/italic]: diagnostica servico systemd (ex: diag nginx)\n"
+                    "- [italic]'limpar'[/italic]: reinicia a memoria da conversa\n"
+                    "- [italic]'info'[/italic]: dados da distro, kernel e modo ativo\n"
+                    "- [italic]'sair'[/italic]: encerra o programa."
                 )
                 continue
 
@@ -268,6 +364,19 @@ def main() -> None:
         help="Modelo Ollama a ser utilizado (padrao: qwen2.5:7b).",
     )
     parser.add_argument(
+        "--mode",
+        "-M",
+        choices=["readonly", "assisted"],
+        default="readonly",
+        help="Chave seletora de modo: 'readonly' (modo seguro) ou 'assisted' (permite acoes com aprovacao).",
+    )
+    parser.add_argument(
+        "--assisted",
+        "-a",
+        action="store_true",
+        help="Atalho para iniciar diretamente em modo assistido com aprovacao humana.",
+    )
+    parser.add_argument(
         "--explain",
         "-e",
         action="store_true",
@@ -286,7 +395,9 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    cli = KoredCLI(model=args.model)
+    selected_mode = ExecutionMode.ASSISTED if args.assisted or args.mode == "assisted" else ExecutionMode.READONLY
+
+    cli = KoredCLI(model=args.model, mode=selected_mode)
 
     if args.diag or args.service:
         cli.print_banner()

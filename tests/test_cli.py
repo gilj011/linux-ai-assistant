@@ -66,6 +66,13 @@ class TestKoredCLI(unittest.TestCase):
         self.assertIn("RELATORIO DE EVIDENCIAS", self.cli.conversation_history[-2]["content"])
         self.assertEqual(self.cli.conversation_history[-1]["content"], "Analise: sistema estavel.")
 
+    def test_mode_toggle(self):
+        from src.executor import ExecutionMode
+        self.assertEqual(self.cli.mode, ExecutionMode.READONLY)
+        self.cli.set_mode(ExecutionMode.ASSISTED)
+        self.assertEqual(self.cli.mode, ExecutionMode.ASSISTED)
+        self.assertIn("MODO ASSISTIDO", self.cli.system_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

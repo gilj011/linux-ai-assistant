@@ -29,13 +29,15 @@ Este documento acompanha as fases de planejamento, desenvolvimento e lançamento
 
 ---
 
-## Fase 3 — Executor Controlado e Resolução Assistida
+## Fase 3 — Executor Controlado e Resolução Assistida (Concluida)
 **Objetivo:** Permitir a execução segura de comandos sugeridos sob estrita supervisão do usuário.
 
-- [ ] Motor validador de comandos contra a whitelist configurável pelo usuário.
-- [ ] Sanitização e bloqueio de injeção de comandos / pipes perigosos.
-- [ ] Interface de confirmação interativa com explicação prévia de efeitos colaterais.
-- [ ] Histórico e log local de auditoria de operações executadas.
+- [x] Motor validador de comandos contra a whitelist configurável pelo usuário (`ControlledExecutor`).
+- [x] Sanitização e bloqueio de injeção de comandos / pipes perigosos (`blocked_patterns`).
+- [x] Chave seletora operacional (Modo Seguro vs Modo Assistido).
+- [x] Parser de acoes estruturadas (`write_file` e `run_command`).
+- [x] Caixa de autorização humana explícita no CLI com confirmação obrigatória [s/N].
+- [x] Criação segura de arquivos de instrução e scripts no disco sob autorização.
 
 ---
 

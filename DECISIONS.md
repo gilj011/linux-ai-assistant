@@ -60,3 +60,18 @@ Este documento registra as principais decisões de arquitetura e design técnico
   2. Evoluir a persona para um **copiloto técnico de engenharia de sistemas**, com abordagem adaptativa: clareza cirúrgica para iniciantes e profundidade de baixo nível (internals, networking, performance, debugging) para usuários experientes.
 * **Consequências:**
   * *Positivas:* Posicionamento sério, profissional e atrativo para toda a comunidade Linux; eliminação de ruídos ou explicações prolixas; comando curto e natural para o terminal (`kored`).
+
+---
+
+### ADR 006: Chave Seletora de Modos e Autorizacao Humana Obrigatoria
+* **Status:** Aceita
+* **Data:** 2026-11-22
+* **Contexto:** O assistente precisa ser capaz de criar arquivos de instrucao/scripts e sugerir comandos de correcao no sistema, mas a IA nao pode sob hipotese alguma executar acoes de forma autonoma sem o controle do usuario.
+* **Decisão:**
+  1. Criar uma chave seletora operacional com dois modos:
+     - `readonly` (Modo Seguro): o kored atua apenas como consultor e analista; nenhuma acao ou gravacao em disco e executada.
+     - `assisted` (Modo Assistido): a IA pode propor a criacao de arquivos e comandos de correcao via blocos estruturados `kored-action`.
+  2. Implementar uma caixa de autorizacao interativa obrigatoria no CLI: toda acao proposta no modo assistido exibe resumo detalhado e exige confirmacao manual `[s/N]`. Sem o `s` explicito, nada e alterado.
+  3. Validar comandos contra a lista de padroes bloqueados (`config/allowed_commands.yaml`).
+* **Consequências:**
+  * *Positivas:* Seguranca maxima por design, blindando o sistema contra alucinacoes da IA enquanto confere capacidade operacional real sob supervisao do usuario.
