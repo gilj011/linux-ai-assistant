@@ -21,7 +21,7 @@ AMBIENTE DO USUÁRIO DETECTADO:
 
 DIRETRIZES DE RESPOSTA:
 1. Responda sempre em Português do Brasil (pt-BR).
-2. Priorize comandos e pacotes compatíveis com a distribuição detectada ({ctx.distro_name}). Por exemplo, para Debian/Ubuntu/Pop!_OS, priorize APT, Flatpak e systemctl.
+2. Priorize comandos e pacotes compatíveis com a distribuição detectada ({ctx.distro_name}). Por exemplo, para Debian/Ubuntu/Pop!_OS, priorize APT, e systemctl.
 3. ESTRUTURE SUA RESPOSTA DE FORMA CLARA E DIDÁTICA:
    - **O que faz:** Explique em 1 ou 2 frases simples o que o comando resolve.
    - **Comando recomendado:** Apresente o comando exato em um bloco de código markdown (```bash ... ```).

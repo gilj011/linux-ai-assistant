@@ -1,12 +1,12 @@
 """
 Interface de Linha de Comando (CLI) interativa do Linux AI Assistant.
-Apresenta respostas didáticas em tempo real com streaming e destaque de sintaxe.
+Apresenta respostas didáticas em tempo real com streaming, memória de conversa e indicador de carregamento.
 """
 
 import argparse
 from pathlib import Path
 import sys
-from typing import Optional
+from typing import Dict, List, Optional
 
 # Garante que a raiz do projeto esteja no sys.path mesmo ao executar diretamente
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -28,12 +28,29 @@ console = Console()
 
 
 class LinuxAssistantCLI:
-    """Controlador da interface de terminal do assistente."""
+    """Controlador da interface de terminal do assistente com memória de sessão."""
+
+    MAX_HISTORY_MESSAGES = 20
 
     def __init__(self, model: str = "qwen2.5:7b", base_url: Optional[str] = None):
         self.context: SystemContext = OSInspector.get_system_context()
         self.client = OllamaClient(base_url=base_url, model=model)
         self.system_prompt = PromptBuilder.build_system_prompt(self.context)
+        self.conversation_history: List[Dict[str, str]] = []
+        self.reset_conversation()
+
+    def reset_conversation(self) -> None:
+        """Reinicia o histórico da conversa mantendo o prompt do sistema."""
+        self.conversation_history = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+
+    def _trim_history_if_needed(self) -> None:
+        """Mantém o histórico dentro de limites saudáveis de contexto."""
+        if len(self.conversation_history) > self.MAX_HISTORY_MESSAGES:
+            system_msg = self.conversation_history[0]
+            # Mantém os últimos 14 turnos de mensagem
+            self.conversation_history = [system_msg] + self.conversation_history[-14:]
 
     def print_banner(self) -> None:
         """Exibe o cabeçalho inicial do assistente com as informações do sistema."""
@@ -62,39 +79,64 @@ class LinuxAssistantCLI:
         return True
 
     def ask_streaming(self, question: str, is_explain_mode: bool = False) -> None:
-        """Envia a pergunta ao modelo e exibe a resposta formatada em tempo real."""
+        """Envia a pergunta ao modelo com memória de contexto e exibe em streaming."""
         if is_explain_mode:
-            user_prompt = PromptBuilder.build_explain_command_prompt(question)
+            user_content = PromptBuilder.build_explain_command_prompt(question)
             title = f"🔍 Explicando comando: [bold yellow]{question}[/bold yellow]"
         else:
-            user_prompt = question
+            user_content = question
             title = f"💡 Dúvida: [bold yellow]{question}[/bold yellow]"
 
         console.print()
         console.rule(title)
 
-        full_response = ""
+        # Adiciona a mensagem do usuário ao histórico da conversa
+        self.conversation_history.append({"role": "user", "content": user_content})
+        self._trim_history_if_needed()
+
+        generator = self.client.stream_chat(messages=self.conversation_history)
+        first_token = ""
+
         try:
-            with Live(Markdown(""), console=console, refresh_per_second=10) as live:
-                for token in self.client.stream_generate(
-                    prompt=user_prompt,
-                    system_prompt=self.system_prompt,
-                ):
-                    full_response += token
-                    live.update(Markdown(full_response))
+            # Indicador de carregamento animado enquanto o modelo processa e pensa
+            with console.status(
+                "[bold cyan]O Professor Linux está pensando...[/bold cyan]",
+                spinner="dots",
+            ):
+                try:
+                    first_token = next(generator)
+                except StopIteration:
+                    first_token = ""
+
+            full_response = first_token
+            if full_response:
+                with Live(Markdown(full_response), console=console, refresh_per_second=10) as live:
+                    for token in generator:
+                        full_response += token
+                        live.update(Markdown(full_response))
+            else:
+                console.print("[yellow][Nenhuma resposta gerada pelo modelo][/yellow]")
+
+            # Armazena a resposta no histórico apenas se gerou conteúdo com sucesso
+            if full_response and not full_response.startswith("\n[Erro"):
+                self.conversation_history.append({"role": "assistant", "content": full_response})
+
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido pelo usuário][/yellow]")
+        except Exception as e:
+            console.print(f"\n[red]Erro durante a geração:[/red] {str(e)}")
+
         console.rule(style="dim")
         console.print()
 
     def run_interactive(self) -> None:
-        """Executa o loop interativo no terminal."""
+        """Executa o loop interativo no terminal com memória de contexto."""
         self.print_banner()
         self.check_ollama_status()
 
         console.print(
-            "[dim]Comandos especiais: 'sair' para encerrar | 'info' para ver o sistema | "
-            "'explain <comando>' para dissecar um comando.[/dim]\n"
+            "[dim]Comandos especiais: 'sair' para encerrar | 'limpar' para reiniciar o contexto | "
+            "'info' para ver o sistema | 'explain <comando>' para dissecar.[/dim]\n"
         )
 
         while True:
@@ -111,8 +153,14 @@ class LinuxAssistantCLI:
             if lower_cmd in ["sair", "exit", "quit", "q"]:
                 console.print("[cyan]Até logo! Bons estudos no Linux.[/cyan]")
                 break
+            elif lower_cmd in ["limpar", "clear", "reset"]:
+                self.reset_conversation()
+                console.print("[cyan]🧹 Histórico da conversa limpo! Iniciando um novo contexto.[/cyan]\n")
+                continue
             elif lower_cmd == "info":
-                console.print(Panel(self.context.to_prompt_context(), title="🖥️  Contexto do Sistema", border_style="green"))
+                turns = (len(self.conversation_history) - 1) // 2
+                ctx_summary = self.context.to_prompt_context() + f"\n- Turnos de conversa memorizados: {max(0, turns)}"
+                console.print(Panel(ctx_summary, title="🖥️  Contexto do Sistema e Sessão", border_style="green"))
                 continue
             elif lower_cmd.startswith("explain "):
                 target_cmd = user_input[8:].strip()
@@ -124,9 +172,10 @@ class LinuxAssistantCLI:
             elif lower_cmd in ["ajuda", "help", "?"]:
                 console.print(
                     "[bold]Como usar:[/bold]\n"
-                    "- Digite qualquer dúvida sobre Linux (ex: [italic]'como ver portas abertas'[/italic])\n"
+                    "- Digite qualquer dúvida sobre Linux (o assistente lembra do contexto anterior!)\n"
                     "- Use [italic]'explain <comando>'[/italic] para entender detalhadamente um comando\n"
-                    "- Digite [italic]'info'[/italic] para checar a detecção do seu sistema\n"
+                    "- Digite [italic]'limpar'[/italic] para esquecer a conversa anterior e começar um novo assunto\n"
+                    "- Digite [italic]'info'[/italic] para checar a detecção do seu sistema e histórico\n"
                     "- Digite [italic]'sair'[/italic] para encerrar."
                 )
                 continue

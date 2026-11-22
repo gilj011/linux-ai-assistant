@@ -53,6 +53,26 @@ class TestOllamaClient(unittest.TestCase):
         output = list(self.client.stream_generate(prompt="Oi"))
         self.assertEqual("".join(output), "Olá! Como posso ajudar?")
 
+    @patch("requests.post")
+    def test_stream_chat(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+
+        chunks = [
+            json.dumps({"message": {"role": "assistant", "content": "Para apagar "}, "done": False}).encode("utf-8"),
+            json.dumps({"message": {"role": "assistant", "content": "logs do Docker..."}, "done": True}).encode("utf-8"),
+        ]
+        mock_resp.iter_lines.return_value = chunks
+        mock_post.return_value = mock_resp
+
+        messages = [
+            {"role": "user", "content": "como apagar logs do docker?"}
+        ]
+        output = list(self.client.stream_chat(messages=messages))
+        self.assertEqual("".join(output), "Para apagar logs do Docker...")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ Cliente HTTP para comunicação com o Ollama local com suporte a streaming.
 
 import json
 import os
-from typing import Generator, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 import requests
 
 
@@ -94,3 +94,44 @@ class OllamaClient:
             )
         except Exception as e:
             yield f"\n\n[Erro inesperado na geração]: {str(e)}"
+
+    def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+    ) -> Generator[str, None, None]:
+        """
+        Gera resposta em tempo real via endpoint /api/chat do Ollama,
+        mantendo o histórico completo da conversa (multi-turn).
+        """
+        target_model = model or self.model
+        payload = {
+            "model": target_model,
+            "messages": messages,
+            "stream": True,
+        }
+
+        url = f"{self.base_url}/api/chat"
+
+        try:
+            with requests.post(url, json=payload, stream=True, timeout=self.timeout) as response:
+                if response.status_code != 200:
+                    yield f"\n[Erro do Ollama HTTP {response.status_code}]: {response.text}"
+                    return
+
+                for line in response.iter_lines():
+                    if line:
+                        chunk = json.loads(line.decode("utf-8"))
+                        msg = chunk.get("message", {})
+                        token = msg.get("content", "")
+                        if token:
+                            yield token
+                        if chunk.get("done", False):
+                            break
+        except requests.exceptions.ConnectionError:
+            yield (
+                "\n\n[Erro]: Conexão perdida com o Ollama local. "
+                "Verifique se o processo do Ollama continua ativo."
+            )
+        except Exception as e:
+            yield f"\n\n[Erro inesperado no chat]: {str(e)}"
