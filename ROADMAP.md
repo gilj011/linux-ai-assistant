@@ -4,7 +4,7 @@ Este documento acompanha as fases de planejamento, desenvolvimento e lançamento
 
 ---
 
-## Fase 1 — MVP (Foco Atual) 🎯
+## Fase 1 — MVP (Foco Atual)
 **Objetivo:** Construir um assistente CLI interativo, rápido e didático para dúvidas e comandos Linux, integrado ao Ollama local.
 
 - [x] Alinhamento inicial de objetivos e princípios (`start.md`).

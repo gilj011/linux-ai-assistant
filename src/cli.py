@@ -53,7 +53,7 @@ class KoredCLI:
     def print_banner(self) -> None:
         """Exibe o cabeçalho técnico do kored com as informações do sistema."""
         header_text = Text()
-        header_text.append("⚡ kored ", style="bold cyan")
+        header_text.append("kored ", style="bold cyan")
         header_text.append("— Linux Systems Intelligence & Assistant\n", style="bold white")
         header_text.append(f"Host: {self.context.distro_name} {self.context.distro_version} ", style="green")
         header_text.append(f"(Kernel {self.context.kernel} / {self.context.arch}) | ", style="dim")
@@ -69,7 +69,7 @@ class KoredCLI:
                 Panel(
                     f"[bold red]Falha na comunicação com o backend local:[/bold red]\n\n{msg}\n\n"
                     "[dim]Certifique-se de que o daemon do Ollama está em execução ('ollama serve').[/dim]",
-                    title="⚠️  kored backend offline",
+                    title="[Aviso] kored backend offline",
                     border_style="red",
                 )
             )
@@ -80,10 +80,10 @@ class KoredCLI:
         """Processa a consulta com streaming e memória de contexto."""
         if is_explain_mode:
             user_content = PromptBuilder.build_explain_command_prompt(question)
-            title = f"🔍 [bold cyan]kored[/bold cyan] :: Inspeção de comando: [bold yellow]{question}[/bold yellow]"
+            title = f"[bold cyan]kored[/bold cyan] :: Inspecao de comando: [bold yellow]{question}[/bold yellow]"
         else:
             user_content = question
-            title = f"⚡ [bold cyan]kored[/bold cyan] :: Consulta: [bold yellow]{question}[/bold yellow]"
+            title = f"[bold cyan]kored[/bold cyan] :: Consulta: [bold yellow]{question}[/bold yellow]"
 
         console.print()
         console.rule(title)
@@ -149,12 +149,12 @@ class KoredCLI:
                 break
             elif lower_cmd in ["limpar", "clear", "reset"]:
                 self.reset_conversation()
-                console.print("[cyan]🧹 Contexto da sessão reiniciado.[/cyan]\n")
+                console.print("[cyan]Contexto da sessao reiniciado.[/cyan]\n")
                 continue
             elif lower_cmd == "info":
                 turns = (len(self.conversation_history) - 1) // 2
                 ctx_summary = self.context.to_prompt_context() + f"\n- Turnos de contexto ativos: {max(0, turns)}"
-                console.print(Panel(ctx_summary, title="🖥️  kored :: Informações do Ambiente", border_style="green"))
+                console.print(Panel(ctx_summary, title="kored :: Informacoes do Ambiente", border_style="green"))
                 continue
             elif lower_cmd.startswith("explain "):
                 target_cmd = user_input[8:].strip()

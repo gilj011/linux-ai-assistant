@@ -6,7 +6,7 @@ Nosso objetivo é construir uma ferramenta confiável, acessível e educativa pa
 
 ---
 
-## 📌 Diretrizes Gerais
+## Diretrizes Gerais
 
 1. **Didática em Primeiro Lugar:** Toda mensagem ou resposta formatada pelo assistente deve priorizar clareza, evitando termos técnicos desnecessários sem a devida explicação.
 2. **Segurança Inegociável:** Qualquer funcionalidade que interaja com o sistema operacional deve respeitar o princípio do menor privilégio. Nunca execute comandos sem validação prévia.
@@ -14,7 +14,7 @@ Nosso objetivo é construir uma ferramenta confiável, acessível e educativa pa
 
 ---
 
-## 🛠️ Como Contribuir
+## Como Contribuir
 
 1. Faça um Fork do repositório no GitHub.
 2. Crie uma branch com a sua feature ou correção:
