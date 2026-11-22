@@ -50,6 +50,22 @@ class TestKoredCLI(unittest.TestCase):
         self.assertEqual(self.cli.conversation_history[2]["role"], "assistant")
         self.assertEqual(self.cli.conversation_history[2]["content"], "Para apagar logs, use truncate...")
 
+    @patch("src.ollama_client.OllamaClient.stream_chat")
+    @patch("src.diagnostics.DiagnosticEngine.run_health_check")
+    def test_run_diagnostics(self, mock_health, mock_stream):
+        from src.diagnostics import DiagnosticReport
+        from src.probes import ProbeResult
+
+        mock_health.return_value = DiagnosticReport(
+            target="Saude Geral",
+            results=[ProbeResult("Memoria", "free", True, "ok")],
+        )
+        mock_stream.return_value = iter(["Analise: ", "sistema estavel."])
+
+        self.cli.run_diagnostics()
+        self.assertIn("RELATORIO DE EVIDENCIAS", self.cli.conversation_history[-2]["content"])
+        self.assertEqual(self.cli.conversation_history[-1]["content"], "Analise: sistema estavel.")
+
 
 if __name__ == "__main__":
     unittest.main()

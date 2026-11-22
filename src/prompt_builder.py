@@ -50,3 +50,19 @@ DIRETRIZES TÉCNICAS E DE COMPORTAMENTO:
             f"2. O significado exato de cada flag, argumento ou redirecionamento.\n"
             f"3. Efeitos colaterais, pré-requisitos de permissão e boas práticas recomendadas."
         )
+
+    @staticmethod
+    def build_diagnostic_prompt(evidences: str, user_notes: str = "") -> str:
+        """Monta prompt para analise e resolucao de incidentes com base em evidencias reais do sistema."""
+        additional_context = f"\nObservacoes adicionais do usuario: {user_notes}\n" if user_notes else ""
+
+        return (
+            f"Execute uma analise diagnostica de engenharia com base nas evidencias reais coletadas do sistema:{additional_context}\n\n"
+            f"{evidences}\n\n"
+            f"ESTRUTURE SUA RESPOSTA DA SEGUINTE FORMA:\n"
+            f"1. Resumo do Diagnostico: Avaliacao rapida do estado de saude do sistema.\n"
+            f"2. Anomalias Identificadas: Detalhe qualquer alerta de consumo, falha em servicos ou erros em logs (ou confirme se o sistema esta estavel).\n"
+            f"3. Causa Raiz Provavel: Explicacao tecnica de por que o problema ocorreu.\n"
+            f"4. Acoes Corretivas: Comandos exatos para mitigar ou corrigir cada problema encontrado.\n"
+            f"5. Verificacao: Comandos para confirmar que a correcao surtiu efeito."
+        )

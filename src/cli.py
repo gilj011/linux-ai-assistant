@@ -19,6 +19,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
+from src.diagnostics import DiagnosticEngine, DiagnosticReport
 from src.ollama_client import OllamaClient
 from src.os_inspector import OSInspector, SystemContext
 from src.prompt_builder import PromptBuilder
@@ -39,19 +40,19 @@ class KoredCLI:
         self.reset_conversation()
 
     def reset_conversation(self) -> None:
-        """Reinicia o histórico da conversa mantendo o prompt do sistema."""
+        """Reinicia o historico da conversa mantendo o prompt do sistema."""
         self.conversation_history = [
             {"role": "system", "content": self.system_prompt}
         ]
 
     def _trim_history_if_needed(self) -> None:
-        """Mantém o histórico dentro de limites saudáveis de contexto."""
+        """Mantem o historico dentro de limites saudaveis de contexto."""
         if len(self.conversation_history) > self.MAX_HISTORY_MESSAGES:
             system_msg = self.conversation_history[0]
             self.conversation_history = [system_msg] + self.conversation_history[-14:]
 
     def print_banner(self) -> None:
-        """Exibe o cabeçalho técnico do kored com as informações do sistema."""
+        """Exibe o cabecalho tecnico do kored com as informacoes do sistema."""
         header_text = Text()
         header_text.append("kored ", style="bold cyan")
         header_text.append("— Linux Systems Intelligence & Assistant\n", style="bold white")
@@ -62,13 +63,13 @@ class KoredCLI:
         console.print(Panel(header_text, border_style="cyan", padding=(1, 2)))
 
     def check_ollama_status(self) -> bool:
-        """Verifica se o backend Ollama está operacional."""
+        """Verifica se o backend Ollama esta operacional."""
         ok, msg = self.client.check_connection()
         if not ok:
             console.print(
                 Panel(
-                    f"[bold red]Falha na comunicação com o backend local:[/bold red]\n\n{msg}\n\n"
-                    "[dim]Certifique-se de que o daemon do Ollama está em execução ('ollama serve').[/dim]",
+                    f"[bold red]Falha na comunicacao com o backend local:[/bold red]\n\n{msg}\n\n"
+                    "[dim]Certifique-se de que o daemon do Ollama esta em execucao ('ollama serve').[/dim]",
                     title="[Aviso] kored backend offline",
                     border_style="red",
                 )
@@ -77,7 +78,7 @@ class KoredCLI:
         return True
 
     def ask_streaming(self, question: str, is_explain_mode: bool = False) -> None:
-        """Processa a consulta com streaming e memória de contexto."""
+        """Processa a consulta com streaming e memoria de contexto."""
         if is_explain_mode:
             user_content = PromptBuilder.build_explain_command_prompt(question)
             title = f"[bold cyan]kored[/bold cyan] :: Inspecao de comando: [bold yellow]{question}[/bold yellow]"
@@ -119,25 +120,87 @@ class KoredCLI:
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido][/yellow]")
         except Exception as e:
-            console.print(f"\n[red]Erro durante a geração:[/red] {str(e)}")
+            console.print(f"\n[red]Erro durante a geracao:[/red] {str(e)}")
+
+        console.rule(style="dim")
+        console.print()
+
+    def run_diagnostics(self, service_name: Optional[str] = None, user_notes: str = "") -> None:
+        """Executa sondas no sistema e aciona o motor de analise diagnostica da IA."""
+        console.print()
+        if service_name:
+            target_desc = f"Servico '{service_name}'"
+            title = f"[bold cyan]kored[/bold cyan] :: Diagnostico do servico: [bold yellow]{service_name}[/bold yellow]"
+            with console.status(f"[bold cyan]Inspecionando {service_name}...[/bold cyan]", spinner="dots"):
+                report = DiagnosticEngine.run_service_check(service_name)
+        else:
+            target_desc = "Saude Geral do Sistema"
+            title = "[bold cyan]kored[/bold cyan] :: Diagnostico de Saude Geral do Sistema"
+            with console.status("[bold cyan]Executando sondas do sistema (recursos, servicos, logs)...[/bold cyan]", spinner="dots"):
+                report = DiagnosticEngine.run_health_check()
+
+        console.rule(title)
+        
+        # Exibe resumo das evidencias coletadas
+        summary_lines = [f"Alvo inspecionado: {target_desc}", f"Sondas executadas: {len(report.results)}"]
+        for res in report.results:
+            status_text = "[green]OK[/green]" if res.success else "[yellow]Aviso/Falha[/yellow]"
+            summary_lines.append(f"- {res.name}: {status_text}")
+        
+        console.print(Panel("\n".join(summary_lines), title="Evidencias Coletadas", border_style="blue"))
+
+        diag_prompt = PromptBuilder.build_diagnostic_prompt(
+            evidences=report.to_prompt_context(),
+            user_notes=user_notes,
+        )
+
+        self.conversation_history.append({"role": "user", "content": diag_prompt})
+        self._trim_history_if_needed()
+
+        generator = self.client.stream_chat(messages=self.conversation_history)
+        first_token = ""
+
+        try:
+            with console.status("[bold cyan]kored correlacionando evidencias e elaborando diagnostico...[/bold cyan]", spinner="dots"):
+                try:
+                    first_token = next(generator)
+                except StopIteration:
+                    first_token = ""
+
+            full_response = first_token
+            if full_response:
+                with Live(Markdown(full_response), console=console, refresh_per_second=10) as live:
+                    for token in generator:
+                        full_response += token
+                        live.update(Markdown(full_response))
+            else:
+                console.print("[yellow][Nenhum diagnostico gerado pelo modelo][/yellow]")
+
+            if full_response and not full_response.startswith("\n[Erro"):
+                self.conversation_history.append({"role": "assistant", "content": full_response})
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow][Interrompido][/yellow]")
+        except Exception as e:
+            console.print(f"\n[red]Erro durante a analise diagnostica:[/red] {str(e)}")
 
         console.rule(style="dim")
         console.print()
 
     def run_interactive(self) -> None:
-        """Executa a sessão interativa do kored."""
+        """Executa a sessao interativa do kored."""
         self.print_banner()
         self.check_ollama_status()
 
         console.print(
-            "[dim]Comandos: 'sair' | 'limpar' (reset de contexto) | 'info' (telemetria do sistema) | 'explain <cmd>'.[/dim]\n"
+            "[dim]Comandos: 'sair' | 'diag' (saude geral) | 'diag <servico>' | 'limpar' | 'info' | 'explain <cmd>'.[/dim]\n"
         )
 
         while True:
             try:
                 user_input = Prompt.ask("[bold cyan]kored[/bold cyan]").strip()
             except (KeyboardInterrupt, EOFError):
-                console.print("\n[cyan]Sessão kored encerrada.[/cyan]")
+                console.print("\n[cyan]Sessao kored encerrada.[/cyan]")
                 break
 
             if not user_input:
@@ -145,7 +208,7 @@ class KoredCLI:
 
             lower_cmd = user_input.lower()
             if lower_cmd in ["sair", "exit", "quit", "q"]:
-                console.print("[cyan]Sessão kored encerrada.[/cyan]")
+                console.print("[cyan]Sessao kored encerrada.[/cyan]")
                 break
             elif lower_cmd in ["limpar", "clear", "reset"]:
                 self.reset_conversation()
@@ -156,19 +219,31 @@ class KoredCLI:
                 ctx_summary = self.context.to_prompt_context() + f"\n- Turnos de contexto ativos: {max(0, turns)}"
                 console.print(Panel(ctx_summary, title="kored :: Informacoes do Ambiente", border_style="green"))
                 continue
+            elif lower_cmd == "diag":
+                self.run_diagnostics()
+                continue
+            elif lower_cmd.startswith("diag "):
+                target_service = user_input[5:].strip()
+                if target_service:
+                    self.run_diagnostics(service_name=target_service)
+                else:
+                    self.run_diagnostics()
+                continue
             elif lower_cmd.startswith("explain "):
                 target_cmd = user_input[8:].strip()
                 if target_cmd:
                     self.ask_streaming(target_cmd, is_explain_mode=True)
                 else:
-                    console.print("[yellow]Informe o comando para análise. Ex: explain ss -tulnp[/yellow]")
+                    console.print("[yellow]Informe o comando para analise. Ex: explain ss -tulnp[/yellow]")
                 continue
             elif lower_cmd in ["ajuda", "help", "?"]:
                 console.print(
-                    "[bold]Instruções de uso do kored:[/bold]\n"
-                    "- Digite consultas sobre comandos, diagnósticos, serviços ou arquitetura Linux\n"
-                    "- Use [italic]'explain <comando>'[/italic] para dissecar parâmetros e mecânica\n"
-                    "- Digite [italic]'limpar'[/italic] para reiniciar a memória da conversa\n"
+                    "[bold]Instrucoes de uso do kored:[/bold]\n"
+                    "- Digite qualquer consulta tecnica de comandos ou administracao Linux\n"
+                    "- Digite [italic]'diag'[/italic] para executar varredura diagnostica de saude do sistema\n"
+                    "- Digite [italic]'diag <servico>'[/italic] para diagnosticar servico systemd (ex: diag nginx)\n"
+                    "- Use [italic]'explain <comando>'[/italic] para dissecar parametros e mecanica\n"
+                    "- Digite [italic]'limpar'[/italic] para reiniciar a memoria da conversa\n"
                     "- Digite [italic]'info'[/italic] para telemetria da distro e kernel\n"
                     "- Digite [italic]'sair'[/italic] para finalizar."
                 )
@@ -190,19 +265,34 @@ def main() -> None:
         "--model",
         "-m",
         default="qwen2.5:7b",
-        help="Modelo Ollama a ser utilizado (padrão: qwen2.5:7b).",
+        help="Modelo Ollama a ser utilizado (padrao: qwen2.5:7b).",
     )
     parser.add_argument(
         "--explain",
         "-e",
         action="store_true",
-        help="Modo de dissecação e análise profunda de comando.",
+        help="Modo de dissecacao e analise profunda de comando.",
+    )
+    parser.add_argument(
+        "--diag",
+        "-d",
+        action="store_true",
+        help="Executa varredura diagnostica e analise de saude do sistema.",
+    )
+    parser.add_argument(
+        "--service",
+        "-s",
+        help="Executa diagnostico focado em um servico especifico (systemd).",
     )
 
     args = parser.parse_args()
     cli = KoredCLI(model=args.model)
 
-    if args.query:
+    if args.diag or args.service:
+        cli.print_banner()
+        cli.check_ollama_status()
+        cli.run_diagnostics(service_name=args.service)
+    elif args.query:
         question = " ".join(args.query)
         cli.print_banner()
         cli.check_ollama_status()

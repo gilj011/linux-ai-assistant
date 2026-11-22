@@ -4,27 +4,28 @@ Este documento acompanha as fases de planejamento, desenvolvimento e lançamento
 
 ---
 
-## Fase 1 — MVP (Foco Atual)
+## Fase 1 — MVP (Concluida)
 **Objetivo:** Construir um assistente CLI interativo, rápido e didático para dúvidas e comandos Linux, integrado ao Ollama local.
 
 - [x] Alinhamento inicial de objetivos e princípios (`start.md`).
 - [x] Definição da arquitetura e modelo de referência (`Qwen 2.5 7B`).
 - [x] Estruturação da documentação e repositório Git.
-- [ ] Implementar módulo de inspeção de ambiente (`os_inspector`) lendo `/etc/os-release` e `uname`.
-- [ ] Implementar cliente Ollama com streaming e tratamento de conexão offline.
-- [ ] Criar CLI com `rich` para exibição formatada (explicações didáticas + blocos de código Bash destacados).
-- [ ] Implementar sistema de configuração inicial (`config.yaml`) e lista inicial de comandos permitidos (`allowed_commands.yaml`).
-- [ ] Validação prática do assistente em terminal real.
+- [x] Implementar módulo de inspeção de ambiente (`os_inspector`) lendo `/etc/os-release` e `uname`.
+- [x] Implementar cliente Ollama com streaming e tratamento de conexão offline.
+- [x] Criar CLI com `rich` para exibição formatada (explicações didáticas + blocos de código Bash destacados).
+- [x] Implementar sistema de configuração inicial (`config.yaml`) e lista inicial de comandos permitidos (`allowed_commands.yaml`).
+- [x] Validação prática do assistente em terminal real.
 
 ---
 
-## Fase 2 — Diagnósticos e Análise de Logs
+## Fase 2 — Diagnósticos e Análise de Logs (Concluida)
 **Objetivo:** Capacitar o assistente a diagnosticar problemas reais a partir de logs e estado de serviços.
 
-- [ ] Coleta segura de estado de serviços (`systemctl status`).
-- [ ] Análise de logs do sistema via `journalctl -p 3 -xb`.
-- [ ] Diagnóstico de conectividade de rede (`ip`, `ping`, `nmcli`).
-- [ ] Formatação de diagnósticos em evidências: Causa Provável, Gravidade e Solução Sugerida.
+- [x] Coleta segura de estado de serviços (`systemctl status` e `--failed`).
+- [x] Análise de logs do sistema via `journalctl -p 3 -xb`.
+- [x] Diagnóstico de conectividade de rede (`ip -br a`).
+- [x] Formatação de diagnósticos em evidências com motor analítico (`DiagnosticEngine`).
+- [x] Modo `--diag` e `--service` integrado ao CLI e sessão interativa (`diag`).
 
 ---
 
