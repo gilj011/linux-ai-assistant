@@ -18,7 +18,12 @@
 2. **Escolha do Modelo:** Selecionado `qwen2.5:7b` como modelo principal e `qwen2.5:3b` como alternativa ultraleve para inferência local via Ollama.
 3. **Segurança e Executor Controlado:** Alinhada a necessidade de uma lista de comandos permitidos (whitelist) auditável e diretamente editável pelo usuário.
 4. **Escopo do MVP (Fase 1):** Definido um assistente em linha de comando (CLI) em Python que responde dúvidas de comandos com rapidez, fluidez (streaming) e didática, contextualizado pela distribuição Linux do usuário.
-5. **Governança:** Criação dos arquivos `PROJECT.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `DECISIONS.md`, `README.md`, `CONTRIBUTING.md` e `LICENSE`.
+5. **Evolução de Identidade e Postura:**
+   - Transição do conceito infantilizado ("Professor Linux") para **kored** — copiloto de engenharia de sistemas Linux.
+   - Nome oficial adotado: **kored** (*Kore* + *daemon*), executável diretamente via `./kored`.
+   - Adicionado indicador visual de carregamento (spinner animado) enquanto o modelo processa.
+   - Implementado suporte a histórico de conversa multi-turn (`/api/chat`), permitindo perguntas e respostas sequenciais contextualizadas.
+   - Registrado ADR 005 em `DECISIONS.md`.
 
 ### Próximos Passos
 * Conectar o repositório ao GitHub.

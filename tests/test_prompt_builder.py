@@ -24,12 +24,12 @@ class TestPromptBuilder(unittest.TestCase):
         self.assertIn("Pop!_OS", prompt)
         self.assertIn("apt, flatpak", prompt)
         self.assertIn("Português do Brasil", prompt)
-        self.assertIn("Linux AI Assistant", prompt)
+        self.assertIn("kored", prompt)
 
     def test_build_explain_command_prompt(self):
         prompt = PromptBuilder.build_explain_command_prompt("tar -xzvf archive.tar.gz")
         self.assertIn("tar -xzvf archive.tar.gz", prompt)
-        self.assertIn("didática", prompt)
+        self.assertIn("mecânica", prompt)
 
 
 if __name__ == "__main__":

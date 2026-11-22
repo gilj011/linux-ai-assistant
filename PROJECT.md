@@ -1,42 +1,33 @@
-# Linux AI Assistant — Projeto
+# kored — Linux Systems Intelligence
 
-> Assistente de IA local, didático e seguro para usuários de Linux.
+> Copiloto local de engenharia de sistemas, troubleshooting e assistência técnica para Linux.
 
 ---
 
 ## 1. Visão Geral
 
-O **Linux AI Assistant** é um assistente de inteligência artificial executado **100% localmente**, projetado para tornar o ecossistema Linux mais acessível, compreensível e amigável, especialmente para iniciantes e pessoas em processo de migração do Windows.
+O **kored** é um assistente técnico e copiloto de inteligência de sistemas Linux executado **100% localmente**, projetado para oferecer assistência de alto nível técnico, diagnósticos precisos e automação segura tanto para iniciantes quanto para engenheiros e administradores de sistemas experientes.
 
-Diferente de chatbots convencionais que apenas cospem comandos ou de scripts que executam ações como uma caixa-preta, a premissa central deste projeto é:
+O nome remete ao núcleo do sistema (*Kore*) somado ao sufixo clássico dos daemons do Linux (*d*), operando como um parceiro silencioso, confiável e poderoso no terminal.
 
-> **"Resolver problemas hoje e ensinar o usuário a resolvê-los sozinho amanhã."**
-
-O assistente atua de forma combinada como:
-* **Assistente Técnico:** Ajuda a encontrar e formular comandos para tarefas do dia a dia.
-* **Ferramenta de Diagnóstico:** Inspeciona o ambiente real do sistema (versão da distro, kernel, logs, serviços) para contextualizar a ajuda.
-* **Professor Linux:** Explica de forma didática o que cada comando, parâmetro e permissão significa.
-* **Guardião de Segurança:** Possui um executor controlado com validação prévia e autorização explícita do usuário.
+O **kored** atua de forma combinada como:
+* **Copiloto Técnico:** Sugere soluções, sintaxes e comandos modernos de padrão de produção.
+* **Ferramenta de Diagnóstico & Troubleshooting:** Inspeciona o ambiente real do sistema (versão da distro, kernel, logs, serviços) para contextualizar a ajuda com precisão cirúrgica.
+* **Mestre em Internals de Linux:** Dissecar a mecânica interna do sistema operacional (processos, sinais, descritores, cgroups, namespaces, storage drivers, tuning de rede).
+* **Guardião de Segurança:** Possui um executor controlado com validação prévia e autorização humana explícita.
 
 ---
 
 ## 2. Pilares Fundamentais
 
 1. **Privacidade e Execução Local:**
-   * Utiliza modelos locais via [Ollama](https://ollama.com/) (como Qwen 2.5 7B / 3B). Nenhum dado do sistema do usuário ou do terminal é enviado para serviços de nuvem de terceiros.
-2. **Didática e Autonomia:**
-   * Nunca apenas entregar um comando isolado; sempre explicar o porquê, suas opções e impactos.
-3. **Segurança Estrita (Human-in-the-Loop):**
-   * A IA nunca executa comandos diretamente.
-   * O sistema possui uma lista de comandos permitidos auditável e editável pelo usuário.
-   * Toda ação que modifica o sistema exige confirmação explícita após explicação do impacto.
-4. **Foco Inicial no Ecossistema Debian-based:**
-   * Distribuições suportadas inicialmente: Debian, Ubuntu, Linux Mint, Pop!_OS, Zorin OS e Elementary OS.
-
----
-
-## 3. Público-Alvo
-
-1. **Usuários em transição:** Pessoas vindas do Windows que sentem estranheza com conceitos como montagem de discos, permissões e ausência de arquivos `.exe`.
-2. **Iniciantes no terminal:** Usuários que têm receio de quebrar o sistema ao digitar comandos.
-3. **Usuários intermediários:** Administradores e desenvolvedores que buscam diagnósticos rápidos de serviços (`systemd`), redes (`ip`/`nmcli`) e logs (`journalctl`).
+   * Utiliza modelos locais via [Ollama](https://ollama.com/) (como `qwen2.5:7b` e `qwen2.5:3b`). Nenhum dado do sistema ou comando é enviado para nuvens externas.
+2. **Abordagem Adaptativa de Engenharia:**
+   * Sem infantilização ou explicações prolixas. Clareza cristalina para dúvidas cotidianas e profundidade técnica rigorosa para tópicos avançados.
+3. **Padrão de Produção:**
+   * Priorização de ferramentas e práticas modernas do ecossistema Linux (`ss`, `ip`, `systemctl`, journald, containers, permissões refinadas).
+4. **Segurança Estrita (Human-in-the-Loop):**
+   * A IA nunca executa comandos arbitrários sem validação.
+   * O sistema conta com uma lista de comandos permitidos totalmente auditável e editável pelo usuário.
+5. **Foco Inicial no Ecossistema Debian-based:**
+   * Distribuições suportadas inicialmente: Debian, Ubuntu, Pop!_OS, Linux Mint, Zorin OS e Elementary OS.

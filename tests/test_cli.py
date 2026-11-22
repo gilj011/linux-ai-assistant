@@ -4,18 +4,18 @@ Testes unitários para o controlador CLI e gerenciamento de histórico.
 
 import unittest
 from unittest.mock import MagicMock, patch
-from src.cli import LinuxAssistantCLI
+from src.cli import KoredCLI
 
 
-class TestLinuxAssistantCLI(unittest.TestCase):
+class TestKoredCLI(unittest.TestCase):
 
     def setUp(self):
-        self.cli = LinuxAssistantCLI(model="qwen2.5:7b")
+        self.cli = KoredCLI(model="qwen2.5:7b")
 
     def test_initial_conversation_history(self):
         self.assertEqual(len(self.cli.conversation_history), 1)
         self.assertEqual(self.cli.conversation_history[0]["role"], "system")
-        self.assertIn("Linux AI Assistant", self.cli.conversation_history[0]["content"])
+        self.assertIn("kored", self.cli.conversation_history[0]["content"])
 
     def test_reset_conversation(self):
         self.cli.conversation_history.append({"role": "user", "content": "olá"})

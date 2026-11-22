@@ -48,3 +48,15 @@ Este documento registra as principais decisões de arquitetura e design técnico
 * **Decisão:** Construir a Fase 1 como uma CLI rica e interativa em Python 3 com a biblioteca `rich`.
 * **Consequências:**
   * *Positivas:* Desenvolvimento rápido, baixo acoplamento e facilidade de teste direto no terminal. O núcleo desenvolvido para o CLI será reaproveitado diretamente quando a interface gráfica for acoplada nas fases futuras.
+
+---
+
+### ADR 005: Identidade Oficial 'kored' e Postura de Engenharia de Sistemas
+* **Status:** Aceita
+* **Data:** 2026-11-22
+* **Contexto:** A proposta inicial de "Professor Linux" soava escolar demais e limitava o alcance do assistente. Usuários avançados, desenvolvedores e sysadmins necessitam de assistência de alto nível técnico, enquanto iniciantes precisam de clareza sem condescendência. Além disso, o nome provisório precisava ser substituído por uma identidade forte e nativa do ecossistema Linux.
+* **Decisão:**
+  1. Definir o nome oficial do projeto e comando CLI como **`kored`** (remetendo a *Kore* + o sufixo *d* dos daemons do Linux).
+  2. Evoluir a persona para um **copiloto técnico de engenharia de sistemas**, com abordagem adaptativa: clareza cirúrgica para iniciantes e profundidade de baixo nível (internals, networking, performance, debugging) para usuários experientes.
+* **Consequências:**
+  * *Positivas:* Posicionamento sério, profissional e atrativo para toda a comunidade Linux; eliminação de ruídos ou explicações prolixas; comando curto e natural para o terminal (`kored`).
