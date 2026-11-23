@@ -4,22 +4,33 @@ Cliente HTTP para comunicação com o Ollama local com suporte a streaming.
 
 import json
 import os
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 import requests
 
 
 class OllamaClient:
     """Cliente para a API HTTP do Ollama rodando localmente."""
 
+    DEFAULT_OPTIONS: Dict[str, Any] = {
+        "temperature": 0.6,
+        "top_p": 0.9,
+        "repeat_penalty": 1.15,
+        "repeat_last_n": 64,
+    }
+
     def __init__(
         self,
         base_url: Optional[str] = None,
         model: str = "qwen2.5:7b",
         timeout: int = 180,
+        options: Optional[Dict[str, Any]] = None,
     ):
         self.base_url = (base_url or os.getenv("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.options = dict(self.DEFAULT_OPTIONS)
+        if options:
+            self.options.update(options)
 
     def check_connection(self) -> Tuple[bool, str]:
         """
@@ -68,6 +79,7 @@ class OllamaClient:
             "model": target_model,
             "prompt": prompt,
             "stream": True,
+            "options": self.options,
         }
         if system_prompt:
             payload["system"] = system_prompt
@@ -109,6 +121,7 @@ class OllamaClient:
             "model": target_model,
             "messages": messages,
             "stream": True,
+            "options": self.options,
         }
 
         url = f"{self.base_url}/api/chat"

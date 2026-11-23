@@ -73,6 +73,11 @@ class TestOllamaClient(unittest.TestCase):
         output = list(self.client.stream_chat(messages=messages))
         self.assertEqual("".join(output), "Para apagar logs do Docker...")
 
+        # Verifica se options foi enviado no payload com repeat_penalty
+        call_kwargs = mock_post.call_args[1]
+        self.assertIn("options", call_kwargs["json"])
+        self.assertEqual(call_kwargs["json"]["options"]["repeat_penalty"], 1.15)
+
 
 if __name__ == "__main__":
     unittest.main()
