@@ -303,10 +303,13 @@ class KoredCLI:
                     border_style = "green" if ok else "yellow"
                     title_prefix = "Saida" if ok else "Retorno da execucao"
                     console.print(Panel(msg, title=f"{title_prefix}: {action.command}", border_style=border_style))
-                    self.conversation_history.append({
-                        "role": "system",
-                        "content": f"[Resultado do comando '{action.command}']: {msg}"
-                    })
+                    # Injeta resultado com label claro de finalizacao para o modelo interpretar
+                    result_label = (
+                        f"[RESULTADO_FINAL — comando '{action.command}' executado com sucesso pelo sistema]: {msg}"
+                        if ok else
+                        f"[RESULTADO_FINAL — comando '{action.command}' executado (sem ocorrencias/saida vazia)]: {msg}"
+                    )
+                    self.conversation_history.append({"role": "system", "content": result_label})
                     executed_any = True
             else:
                 self.executor.audit_logger.log_action(action.action_type, target_desc, "CANCELADO_PELO_USUARIO", user_approved=False)
@@ -320,8 +323,23 @@ class KoredCLI:
             self._generate_followup_response()
 
     def _generate_followup_response(self) -> None:
-        """Gera resposta imediata do kored interpretando os resultados da acao executada."""
-        generator = self.client.stream_chat(messages=self.conversation_history)
+        """Gera resposta imediata do kored interpretando os resultados da acao executada.
+
+        Injeta instrucao explicita para que o modelo interprete o resultado em texto simples,
+        sem emitir novos blocos kored-action — evitando o loop de re-proposta.
+        """
+        # Monta mensagens com instrucao explicita de interpretacao em texto puro
+        followup_messages = list(self.conversation_history)
+        followup_messages.append({
+            "role": "user",
+            "content": (
+                "Com base no resultado acima, interprete o que ele significa para o usuario em texto simples em portugues. "
+                "Seja direto e conclusivo. NAO emita nenhum bloco kored-action. NAO repita o comando. "
+                "NAO peca para o usuario executar nada. Apenas explique o que o resultado indica."
+            ),
+        })
+
+        generator = self.client.stream_chat(messages=followup_messages)
         first_token = ""
 
         try:
@@ -343,10 +361,10 @@ class KoredCLI:
                         live.update(Markdown(clean_text or full_response))
 
             if full_response and not full_response.startswith("\n[Erro"):
+                # Salva apenas a interpretacao no historico — sem o marcador de instrucao extra
                 self.conversation_history.append({"role": "assistant", "content": full_response})
                 self._sync_session()
-                # Se a analise gerar novas propostas subsequentes
-                self._handle_proposed_actions(full_response)
+                # Nao chama _handle_proposed_actions aqui para nao gerar loop de re-proposta
 
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido][/yellow]")

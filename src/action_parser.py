@@ -40,11 +40,19 @@ class ProposedAction:
 class ActionParser:
     """Extrai e sanitiza blocos de acoes kored-action."""
 
+    # Captura blocos com backticks: ```kored-action { ... } ```
     ACTION_BLOCK_PATTERN = re.compile(r"```(?:kored-action|json:action)\s*(\{.*?\})\s*```", re.DOTALL)
+
+    # Captura JSON puro sem backticks: { "action": "run_command", ... } ou { "action": "write_file", ... }
+    # Usado apenas para strip (nao para extracao de acoes, evitando falso positivo em exemplos de texto)
+    BARE_JSON_ACTION_PATTERN = re.compile(
+        r'\{\s*"action"\s*:\s*"(?:run_command|write_file)".*?\}',
+        re.DOTALL,
+    )
 
     @classmethod
     def extract_actions(cls, text: str) -> List[ProposedAction]:
-        """Extrai todas as acoes validas encontradas no texto gerado."""
+        """Extrai todas as acoes validas encontradas no texto gerado (somente blocos com backticks)."""
         actions: List[ProposedAction] = []
         matches = cls.ACTION_BLOCK_PATTERN.findall(text)
 
@@ -77,5 +85,9 @@ class ActionParser:
 
     @classmethod
     def strip_action_blocks(cls, text: str) -> str:
-        """Remove os blocos tecnicos de acao para deixar o texto limpo na visualizacao."""
-        return cls.ACTION_BLOCK_PATTERN.sub("", text).strip()
+        """Remove blocos tecnicos de acao (com e sem backticks) para visualizacao limpa no terminal."""
+        # Remove blocos com backtick primeiro
+        cleaned = cls.ACTION_BLOCK_PATTERN.sub("", text)
+        # Remove JSON puro sem backticks que o modelo as vezes emite no follow-up
+        cleaned = cls.BARE_JSON_ACTION_PATTERN.sub("", cleaned)
+        return cleaned.strip()
