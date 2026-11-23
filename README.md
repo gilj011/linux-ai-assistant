@@ -1,97 +1,154 @@
 # kored — Linux Systems Intelligence
 
-[![Status](https://img.shields.io/badge/status-MVP%20ativo-orange)](ROADMAP.md)
+[![Status](https://img.shields.io/badge/status-v0.3.0%20MVP-green)](docs/ROADMAP.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Ollama](https://img.shields.io/badge/AI-Ollama%20Local-black.svg)](https://ollama.com/)
 
-> **Copiloto local de engenharia de sistemas, troubleshooting e assistencia tecnica para Linux.**
+> Copiloto local de engenharia de sistemas, troubleshooting e assistencia tecnica para Linux.
 
 ---
 
-## Sobre o kored
+## O que e o kored
 
-O **kored** (*Kore* + *daemon*) e um assistente de inteligencia de sistemas Linux executado **100% localmente**. 
+O **kored** (*Kore* + *daemon*) e um assistente de inteligencia de sistemas Linux executado **100% localmente**.
 
-Ele foi desenhado para ser uma ferramenta de cabeceira tanto para quem esta aprendendo a dominar o terminal quanto para engenheiros de software, SREs e sysadmins experientes que buscam produtividade, debugging avancado e entendimento profundo dos *internals* do sistema operacional.
+Desenhado para ser uma ferramenta de cabeceira tanto para quem esta aprendendo a dominar o terminal quanto para engenheiros de software, SREs e sysadmins experientes que buscam produtividade, debugging avancado e entendimento profundo dos internals do sistema operacional.
 
-### Diferenciais:
-1. **Engenharia de Sistemas:** Sem respostas condescendentes. Praticas modernas de producao, foco em performance e seguranca.
-2. **Contexto Real do Host:** Le automaticamente o ambiente (`/etc/os-release`, kernel, package managers) para respostas cirurgicas e sob medida.
-3. **Memoria de Conversa Multi-Turn:** Permite dialogos continuos de troubleshooting sem perder o historico do problema.
-4. **100% Local & Privado:** Inferencia via [Ollama](https://ollama.com/) com modelos de alta performance tecnica (`Qwen 2.5 7B`). Seus comandos e dados nunca saem da maquina.
-5. **Seguranca por Design:** Validacao estrita e lista editavel de comandos permitidos antes de qualquer execucao.
+**Diferenciais:**
+
+- **Sem condescendencia.** Respostas tecnicas de padrao de producao. Clareza para iniciantes, profundidade para experientes.
+- **Contexto real do host.** Le automaticamente o ambiente (`/etc/os-release`, kernel, gerenciadores de pacote) para respostas cirurgicas.
+- **Multi-turn.** Dialogo continuo de troubleshooting sem perder o fio da conversa.
+- **100% local e privado.** Inferencia via [Ollama](https://ollama.com/) com `Qwen 2.5 7B`. Seus dados nunca saem da maquina.
+- **Humano no loop.** Executor controlado: a IA nunca roda comandos sozinha. Toda acao exige `[s/N]` explicito.
 
 ---
 
-## Utilizacao Rapida
+## Pre-requisitos
 
-### Pre-requisitos
-* Sistema Linux baseado em Debian (Pop!_OS, Ubuntu, Debian, Mint, etc.).
-* Python 3.10 ou superior.
-* [Ollama](https://ollama.com/) instalado com o modelo recomendado:
+- Linux baseado em Debian (Pop!_OS, Ubuntu, Debian, Mint, Zorin, Elementary).
+- Python 3.10 ou superior.
+- [Ollama](https://ollama.com/) instalado e rodando com o modelo recomendado:
   ```bash
-  ollama run qwen2.5:7b
+  ollama pull qwen2.5:7b
   ```
 
-### Execucao
+---
+
+## Uso rapido
 
 ```bash
-# Modo Interativo Continuo (Modo Seguro - Somente Leitura)
+# Modo interativo (Modo Seguro — somente consultas e diagnosticos)
 ./kored
 
-# Modo Assistido (permite propor criacao de arquivos e comandos sob aprovacao humana)
+# Modo Assistido (propoe acoes com aprovacao obrigatoria do usuario)
 ./kored --assisted
 # ou: ./kored -a
 
-# Consulta Rapida Direta
+# Consulta direta
 ./kored "como debugar conexoes TCP em estado TIME_WAIT com ss"
 
-# Varredura Diagnostica de Saude do Sistema
+# Varredura de saude do sistema
 ./kored --diag
 
-# Diagnostico de Servico Especifico
+# Diagnostico de um servico especifico
 ./kored --service docker
 
-# Historico de Auditoria de Acoes
+# Historico de auditoria de acoes
 ./kored --audit
 ```
 
+**Comandos dentro da sessao interativa:**
+
+| Comando | Acao |
+|---------|------|
+| `diag` | Executa varredura de saude do sistema |
+| `servico <nome>` | Diagnostica um servico especifico |
+| `historico` | Exibe o log de auditoria de acoes |
+| `modo` | Alterna entre Modo Seguro e Modo Assistido |
+| `sair` | Encerra a sessao |
+
 ---
 
-## Instalacao no Sistema e Empacotamento
+## Instalacao
 
-### Instalacao Rapida via Makefile
-Para poder chamar `kored` de qualquer pasta do terminal:
+### Via Makefile (recomendado)
 
 ```bash
-# Instalacao para o usuario atual (~/.local/bin/kored):
+# Instalacao para o usuario atual (~/.local/bin/kored)
 make install
 
-# Ou instalacao global no sistema (requer sudo):
+# Instalacao global (requer sudo)
 sudo make install
+
+# Remover instalacao
+make uninstall
 ```
 
-### Geracao de Pacote Debian (.deb)
-Para gerar o pacote de instalacao `.deb` nativo para Pop!_OS, Ubuntu ou Debian:
+### Via pacote .deb
 
 ```bash
+# Gerar o pacote
 make deb
-# O pacote sera gerado em dist/kored_0.3.0_all.deb
+# Arquivo gerado em: dist/kored_0.3.0_all.deb
 
-# Para instalar o pacote:
+# Instalar
 sudo dpkg -i dist/kored_0.3.0_all.deb
 ```
 
 ---
 
-## Documentacao do Projeto
+## Modos Operacionais
 
-* [Visao Geral e Principios (PROJECT.md)](PROJECT.md)
-* [Arquitetura Tecnica (ARCHITECTURE.md)](ARCHITECTURE.md)
-* [Roteiro de Desenvolvimento (ROADMAP.md)](ROADMAP.md)
-* [Registro de Decisoes Tecnicas (DECISIONS.md)](DECISIONS.md)
-* [Historico de Sessoes (SESSION_LOG.md)](SESSION_LOG.md)
+| Modo | Ativacao | Comportamento |
+|------|----------|---------------|
+| **Seguro** | padrao (`./kored`) | Somente consultas, analises e diagnosticos. Zero acoes no sistema. |
+| **Assistido** | `./kored -a` | A IA pode propor criacao de arquivos e execucao de comandos. Cada acao exige aprovacao `[s/N]`. |
+
+---
+
+## Estrutura do projeto
+
+```text
+kored/
+├── main.py                     # Ponto de entrada
+├── kored                       # Executavel direto
+├── Makefile                    # test, install, deb, clean
+├── requirements.txt
+├── config/
+│   └── allowed_commands.yaml   # Whitelist editavel de comandos permitidos
+├── src/
+│   ├── cli.py
+│   ├── ollama_client.py
+│   ├── os_inspector.py
+│   ├── prompt_builder.py
+│   ├── probes.py
+│   ├── diagnostics.py
+│   ├── executor.py
+│   ├── action_parser.py
+│   └── audit.py
+├── tests/                      # 27 testes — make test
+├── scripts/                    # install.sh, uninstall.sh, build_deb.sh, kored_completion.bash
+└── docs/                       # Documentacao tecnica
+    ├── PROJECT.md
+    ├── ARCHITECTURE.md
+    ├── ROADMAP.md
+    ├── DECISIONS.md
+    ├── CONTRIBUTING.md
+    └── SESSION_LOG.md
+```
+
+---
+
+## Documentacao
+
+- [Visao Geral e Principios](docs/PROJECT.md)
+- [Arquitetura Tecnica](docs/ARCHITECTURE.md)
+- [Roteiro de Desenvolvimento](docs/ROADMAP.md)
+- [Registro de Decisoes Tecnicas](docs/DECISIONS.md)
+- [Guia de Contribuicao](docs/CONTRIBUTING.md)
+- [Historico de Sessoes](docs/SESSION_LOG.md)
 
 ---
 
