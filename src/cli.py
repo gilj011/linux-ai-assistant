@@ -1,6 +1,6 @@
 """
 Interface de Linha de Comando (CLI) do kored — Linux Systems Intelligence.
-Suporta modos Somente Leitura e Assistido com autorizacao explicita de acoes e auditoria.
+Suporta modos Somente Leitura e Assistido com autorizacao explicita de acoes, auditoria e sessoes persistentes.
 """
 
 import argparse
@@ -22,34 +22,86 @@ from rich.table import Table
 from rich.text import Text
 
 from src.action_parser import ActionParser, ProposedAction
+from src.config import KoredConfig
 from src.diagnostics import DiagnosticEngine, DiagnosticReport
 from src.executor import ControlledExecutor, ExecutionMode
 from src.ollama_client import OllamaClient
 from src.os_inspector import OSInspector, SystemContext
 from src.prompt_builder import PromptBuilder
+from src.session_manager import SessionData, SessionManager
 
 console = Console()
 
 
 class KoredCLI:
-    """Controlador da interface de terminal do kored com chave seletora de execucao."""
-
-    MAX_HISTORY_MESSAGES = 20
+    """Controlador da interface de terminal do kored com chave seletora, auditoria e sessoes."""
 
     def __init__(
         self,
-        model: str = "qwen2.5:7b",
-        mode: ExecutionMode = ExecutionMode.READONLY,
+        model: Optional[str] = None,
+        mode: Optional[ExecutionMode] = None,
         base_url: Optional[str] = None,
         audit_dir: Optional[Path] = None,
+        sessions_dir: Optional[Path] = None,
+        config: Optional[KoredConfig] = None,
+        session_id: Optional[str] = None,
+        resume_latest: bool = False,
     ):
+        self.config = config or KoredConfig.load()
         self.context: SystemContext = OSInspector.get_system_context()
-        self.client = OllamaClient(base_url=base_url, model=model)
+
+        # Determina o modelo ativo (prioridade: argumento explicito > config > default)
+        active_model = model or self.config.model
+
+        # Determina o modo ativo
+        if mode is not None:
+            self.mode = mode
+        else:
+            self.mode = ExecutionMode.ASSISTED if self.config.default_mode == "assisted" else ExecutionMode.READONLY
+
+        active_base_url = base_url or self.config.ollama_host
+
+        self.client = OllamaClient(base_url=active_base_url, model=active_model, timeout=self.config.timeout)
         self.executor = ControlledExecutor(audit_dir=audit_dir)
-        self.mode = mode
+        self.session_manager = SessionManager(sessions_dir=sessions_dir)
         self.system_prompt = PromptBuilder.build_system_prompt(self.context, mode=self.mode)
+
+        self.current_session: Optional[SessionData] = None
         self.conversation_history: List[Dict[str, str]] = []
-        self.reset_conversation()
+
+        if resume_latest:
+            latest = self.session_manager.get_latest_session()
+            if latest:
+                self._load_existing_session(latest)
+            else:
+                self.reset_conversation()
+        elif session_id:
+            target = self.session_manager.load_session(session_id)
+            if target:
+                self._load_existing_session(target)
+            else:
+                self.reset_conversation()
+        else:
+            self.reset_conversation()
+
+    def _load_existing_session(self, session: SessionData) -> None:
+        """Carrega dados e historico de uma sessao salva."""
+        self.current_session = session
+        self.conversation_history = list(session.messages)
+
+        # Garante que o prompt de sistema esteja atualizado com o contexto e modo atual
+        if self.conversation_history and self.conversation_history[0]["role"] == "system":
+            self.conversation_history[0]["content"] = self.system_prompt
+        else:
+            self.conversation_history.insert(0, {"role": "system", "content": self.system_prompt})
+
+    def _sync_session(self) -> None:
+        """Sincroniza o estado atual da conversa no arquivo da sessao."""
+        if self.current_session:
+            self.current_session.messages = list(self.conversation_history)
+            self.current_session.mode = self.mode.value
+            self.current_session.model = self.client.model
+            self.session_manager.save_session(self.current_session)
 
     def set_mode(self, new_mode: ExecutionMode) -> None:
         """Altera a chave seletora de modo e atualiza o prompt do sistema."""
@@ -58,25 +110,37 @@ class KoredCLI:
         if self.conversation_history and self.conversation_history[0]["role"] == "system":
             self.conversation_history[0]["content"] = self.system_prompt
 
+        self._sync_session()
         mode_name = "ASSISTIDO (Aprovacao Explicita)" if self.mode == ExecutionMode.ASSISTED else "SEGURO (Somente Leitura)"
         console.print(f"[bold cyan]Chave Seletora alterada para:[/bold cyan] [bold yellow]{mode_name}[/bold yellow]\n")
 
-    def reset_conversation(self) -> None:
-        """Reinicia o historico da conversa mantendo o prompt do sistema correspondente ao modo."""
+    def reset_conversation(self, title: str = "Nova sessao", save_now: bool = False) -> None:
+        """Reinicia o historico da conversa e prepara uma nova sessao."""
         self.conversation_history = [
             {"role": "system", "content": self.system_prompt}
         ]
+        self.current_session = self.session_manager.create_session(
+            mode=self.mode.value,
+            model=self.client.model,
+            system_prompt=self.system_prompt,
+            title=title,
+            save_now=save_now,
+        )
 
     def _trim_history_if_needed(self) -> None:
         """Mantem o historico dentro de limites saudaveis de contexto."""
-        if len(self.conversation_history) > self.MAX_HISTORY_MESSAGES:
+        limit = self.config.history_limit
+        if len(self.conversation_history) > limit:
             system_msg = self.conversation_history[0]
-            self.conversation_history = [system_msg] + self.conversation_history[-14:]
+            slice_size = max(4, limit - 5)
+            self.conversation_history = [system_msg] + self.conversation_history[-slice_size:]
 
     def print_banner(self) -> None:
-        """Exibe o cabecalho tecnico do kored com as informacoes do sistema e o modo ativo."""
+        """Exibe o cabecalho tecnico do kored com as informacoes do sistema, modo e sessao."""
         mode_label = "ASSISTIDO [Aprovacao Humana]" if self.mode == ExecutionMode.ASSISTED else "SEGURO [Somente Leitura]"
         mode_style = "bold yellow" if self.mode == ExecutionMode.ASSISTED else "bold green"
+
+        session_label = self.current_session.id if self.current_session else "ativa"
 
         header_text = Text()
         header_text.append("kored ", style="bold cyan")
@@ -87,6 +151,8 @@ class KoredCLI:
         header_text.append(mode_label, style=mode_style)
         header_text.append(" | Modelo: ", style="dim")
         header_text.append(f"{self.client.model}", style="yellow")
+        header_text.append(" | Sessao: ", style="dim")
+        header_text.append(session_label, style="cyan")
 
         console.print(Panel(header_text, border_style="cyan", padding=(1, 2)))
 
@@ -138,6 +204,51 @@ class KoredCLI:
 
         console.print(table)
         console.print(f"[dim]Arquivo de auditoria: {self.executor.audit_logger.audit_file}[/dim]\n")
+
+    def show_sessions(self, limit: int = 10) -> None:
+        """Exibe tabela com as sessoes gravadas recentemente."""
+        sessions = self.session_manager.list_sessions(limit=limit)
+        if not sessions:
+            console.print(Panel("Nenhuma sessao gravada encontrada ate o momento.", title="Sessoes kored", border_style="cyan"))
+            return
+
+        table = Table(title="Historico de Sessoes do kored", border_style="cyan", header_style="bold cyan")
+        table.add_column("ID da Sessao", style="yellow", no_wrap=True)
+        table.add_column("Ultima Atividade", style="dim")
+        table.add_column("Modo", style="magenta")
+        table.add_column("Turnos", justify="right", style="green")
+        table.add_column("Titulo / Resumo", style="white")
+
+        for s in sessions:
+            updated_display = s["updated_at"][:19].replace("T", " ") if s.get("updated_at") else ""
+            table.add_row(
+                s["id"],
+                updated_display,
+                s["mode"].upper(),
+                str(s["turns"]),
+                s["title"],
+            )
+
+        console.print(table)
+        console.print(f"[dim]Diretorio de sessoes: {self.session_manager.sessions_dir}[/dim]")
+        console.print("[dim]Para retomar uma sessao: kored --session <ID> ou kored -c (para a mais recente)[/dim]\n")
+
+    def show_config(self) -> None:
+        """Exibe as configuracoes ativas e o caminho do arquivo."""
+        cfg_dict = self.config.to_dict()
+        table = Table(
+            title="kored :: Parametros de Configuracao Ativos",
+            border_style="cyan",
+            header_style="bold cyan",
+        )
+        table.add_column("Parametro", style="bold yellow")
+        table.add_column("Valor Ativo", style="green")
+
+        for k, v in cfg_dict.items():
+            table.add_row(k, str(v))
+
+        console.print(table)
+        console.print(f"[dim]Arquivo de configuracao: {self.config.default_config_path()}[/dim]\n")
 
     def _handle_proposed_actions(self, full_response: str) -> None:
         """Analisa respostas em busca de acoes propostas e gerencia a autorizacao do usuario."""
@@ -195,6 +306,8 @@ class KoredCLI:
                 console.print("[dim]Acao cancelada pelo usuario. Nada foi alterado no sistema.[/dim]\n")
                 self.conversation_history.append({"role": "system", "content": "[Acao cancelada pelo usuario]"})
 
+        self._sync_session()
+
     def ask_streaming(self, question: str, is_explain_mode: bool = False) -> None:
         """Processa a consulta com streaming, memoria de contexto e deteccao de acoes."""
         if is_explain_mode:
@@ -236,6 +349,7 @@ class KoredCLI:
             if full_response and not full_response.startswith("\n[Erro"):
                 self.conversation_history.append({"role": "assistant", "content": full_response})
                 self._handle_proposed_actions(full_response)
+                self._sync_session()
 
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido][/yellow]")
@@ -307,6 +421,7 @@ class KoredCLI:
             if full_response and not full_response.startswith("\n[Erro"):
                 self.conversation_history.append({"role": "assistant", "content": full_response})
                 self._handle_proposed_actions(full_response)
+                self._sync_session()
 
         except KeyboardInterrupt:
             console.print("\n[yellow][Interrompido][/yellow]")
@@ -318,11 +433,14 @@ class KoredCLI:
 
     def run_interactive(self) -> None:
         """Executa a sessao interativa do kored."""
+        if self.config.clear_on_start:
+            console.clear()
+
         self.print_banner()
         self.check_ollama_status()
 
         console.print(
-            "[dim]Comandos: 'sair' | 'modo [seguro|assistido]' | 'diag' | 'historico' | 'limpar' | 'info'.[/dim]\n"
+            "[dim]Comandos: 'sair' | 'modo [seguro|assistido]' | 'sessoes' | 'nova' | 'diag' | 'historico' | 'limpar' | 'info' | 'config'.[/dim]\n"
         )
 
         while True:
@@ -341,7 +459,29 @@ class KoredCLI:
                 break
             elif lower_cmd in ["limpar", "clear", "reset"]:
                 self.reset_conversation()
-                console.print("[cyan]Contexto da sessao reiniciado.[/cyan]\n")
+                if self.config.clear_on_start:
+                    console.clear()
+                self.print_banner()
+                console.print("[cyan]Contexto e tela reiniciados (nova sessao criada).[/cyan]\n")
+                continue
+            elif lower_cmd in ["nova", "new"]:
+                self.reset_conversation()
+                console.print(f"[cyan]Nova sessao iniciada: [bold yellow]{self.current_session.id}[/bold yellow][/cyan]\n")
+                continue
+            elif lower_cmd in ["sessoes", "sessions"]:
+                self.show_sessions()
+                continue
+            elif lower_cmd.startswith("retomar ") or lower_cmd.startswith("resume "):
+                target_id = user_input.split(maxsplit=1)[1].strip()
+                target_sess = self.session_manager.load_session(target_id)
+                if target_sess:
+                    self._load_existing_session(target_sess)
+                    console.print(f"[cyan]Sessao retomada com sucesso: [bold yellow]{target_id}[/bold yellow][/cyan]\n")
+                else:
+                    console.print(f"[red]Sessao '{target_id}' nao encontrada.[/red]\n")
+                continue
+            elif lower_cmd in ["config", "configuracao"]:
+                self.show_config()
                 continue
             elif lower_cmd in ["modo", "mode"]:
                 new_mode = ExecutionMode.ASSISTED if self.mode == ExecutionMode.READONLY else ExecutionMode.READONLY
@@ -358,11 +498,14 @@ class KoredCLI:
                 continue
             elif lower_cmd == "info":
                 turns = (len(self.conversation_history) - 1) // 2
+                sess_id = self.current_session.id if self.current_session else "nenhuma"
                 ctx_summary = (
                     self.context.to_prompt_context() +
                     f"\n- Modo Operacional: {self.mode.value.upper()}" +
+                    f"\n- Sessao Ativa: {sess_id}" +
                     f"\n- Turnos de contexto ativos: {max(0, turns)}" +
-                    f"\n- Auditoria: {self.executor.audit_logger.audit_file}"
+                    f"\n- Auditoria: {self.executor.audit_logger.audit_file}" +
+                    f"\n- Configuracao: {self.config.default_config_path()}"
                 )
                 console.print(Panel(ctx_summary, title="kored :: Informacoes do Ambiente", border_style="green"))
                 continue
@@ -388,11 +531,15 @@ class KoredCLI:
                     "[bold]Instrucoes de uso do kored:[/bold]\n"
                     "- Digite consultas sobre comandos, diagnosticos ou administracao Linux\n"
                     "- [italic]'modo seguro'[/italic] / [italic]'modo assistido'[/italic]: altera chave seletora\n"
+                    "- [italic]'sessoes'[/italic]: lista o historico de sessoes anteriores\n"
+                    "- [italic]'retomar <id>'[/italic]: alterna para uma sessao anterior\n"
+                    "- [italic]'nova'[/italic]: cria uma nova sessao de conversa zerada\n"
                     "- [italic]'diag'[/italic]: varredura diagnostica de saude do sistema\n"
                     "- [italic]'diag <servico>'[/italic]: diagnostica servico systemd (ex: diag nginx)\n"
                     "- [italic]'historico'[/italic]: exibe tabela de auditoria de acoes executadas\n"
-                    "- [italic]'limpar'[/italic]: reinicia a memoria da conversa\n"
-                    "- [italic]'info'[/italic]: dados da distro, kernel e caminhos locais\n"
+                    "- [italic]'config'[/italic]: visualiza os parametros de configuracao ativos\n"
+                    "- [italic]'limpar'[/italic]: limpa a tela e reinicia o contexto\n"
+                    "- [italic]'info'[/italic]: dados da distro, kernel, sessao e caminhos locais\n"
                     "- [italic]'sair'[/italic]: encerra o programa."
                 )
                 continue
@@ -412,14 +559,12 @@ def main() -> None:
     parser.add_argument(
         "--model",
         "-m",
-        default="qwen2.5:7b",
-        help="Modelo Ollama a ser utilizado (padrao: qwen2.5:7b).",
+        help="Modelo Ollama a ser utilizado (padrao: definido em config.yaml ou qwen2.5:7b).",
     )
     parser.add_argument(
         "--mode",
         "-M",
         choices=["readonly", "assisted"],
-        default="readonly",
         help="Chave seletora de modo: 'readonly' (modo seguro) ou 'assisted' (permite acoes com aprovacao).",
     )
     parser.add_argument(
@@ -427,6 +572,27 @@ def main() -> None:
         "-a",
         action="store_true",
         help="Atalho para iniciar diretamente em modo assistido com aprovacao humana.",
+    )
+    parser.add_argument(
+        "--continue",
+        "-c",
+        dest="resume_latest",
+        action="store_true",
+        help="Retoma a sessao de conversa mais recente gravada em disco.",
+    )
+    parser.add_argument(
+        "--session",
+        help="Retoma uma sessao especifica pelo seu ID.",
+    )
+    parser.add_argument(
+        "--sessions",
+        action="store_true",
+        help="Lista as sessoes de conversa gravadas recentemente e sai.",
+    )
+    parser.add_argument(
+        "--config",
+        action="store_true",
+        help="Exibe os parametros de configuracao ativos e sai.",
     )
     parser.add_argument(
         "--explain",
@@ -452,11 +618,30 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    selected_mode = ExecutionMode.ASSISTED if args.assisted or args.mode == "assisted" else ExecutionMode.READONLY
 
-    cli = KoredCLI(model=args.model, mode=selected_mode)
+    # Carrega configuracao persistente
+    cfg = KoredConfig.load()
 
-    if args.audit:
+    # Modo selecionado
+    selected_mode = None
+    if args.assisted:
+        selected_mode = ExecutionMode.ASSISTED
+    elif args.mode:
+        selected_mode = ExecutionMode.ASSISTED if args.mode == "assisted" else ExecutionMode.READONLY
+
+    cli = KoredCLI(
+        model=args.model,
+        mode=selected_mode,
+        config=cfg,
+        session_id=args.session,
+        resume_latest=args.resume_latest,
+    )
+
+    if args.config:
+        cli.show_config()
+    elif args.sessions:
+        cli.show_sessions()
+    elif args.audit:
         cli.show_audit_history()
     elif args.diag or args.service:
         cli.print_banner()

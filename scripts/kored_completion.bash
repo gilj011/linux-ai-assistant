@@ -7,7 +7,7 @@ _kored_completions() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    opts="--help -h --model -m --mode -M --assisted -a --explain -e --diag -d --service -s --audit"
+    opts="--help -h --model -m --mode -M --assisted -a --continue -c --session --sessions --config --explain -e --diag -d --service -s --audit"
 
     case "${prev}" in
         --mode|-M)

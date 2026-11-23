@@ -46,6 +46,19 @@ Desenhado para ser uma ferramenta de cabeceira tanto para quem esta aprendendo a
 ./kored --assisted
 # ou: ./kored -a
 
+# Retomar a ultima sessao de conversa
+./kored --continue
+# ou: ./kored -c
+
+# Listar historico de sessoes anteriores gravadas
+./kored --sessions
+
+# Retomar uma sessao especifica pelo ID
+./kored --session <ID_DA_SESSAO>
+
+# Visualizar parametros de configuracao ativos (~/.config/kored/config.yaml)
+./kored --config
+
 # Consulta direta
 ./kored "como debugar conexoes TCP em estado TIME_WAIT com ss"
 
@@ -63,10 +76,16 @@ Desenhado para ser uma ferramenta de cabeceira tanto para quem esta aprendendo a
 
 | Comando | Acao |
 |---------|------|
+| `sessoes` | Lista o historico de sessoes gravadas |
+| `retomar <id>` | Retoma o contexto de uma sessao anterior |
+| `nova` | Inicia uma nova sessao zerada sem sair do CLI |
 | `diag` | Executa varredura de saude do sistema |
-| `servico <nome>` | Diagnostica um servico especifico |
+| `diag <servico>` | Diagnostica servico systemd especifico (ex: diag docker) |
 | `historico` | Exibe o log de auditoria de acoes |
+| `config` | Exibe os parametros de configuracao ativos |
 | `modo` | Alterna entre Modo Seguro e Modo Assistido |
+| `limpar` | Limpa a tela e reinicia o contexto da conversa |
+| `info` | Exibe detalhes do ambiente, distro, kernel e sessao |
 | `sair` | Encerra a sessao |
 
 ---

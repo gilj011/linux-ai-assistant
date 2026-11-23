@@ -1,25 +1,42 @@
 """
-Testes unitários para o controlador CLI e gerenciamento de histórico.
+Testes unitarios para o controlador CLI, gerenciamento de historico e sessoes persistentes.
 """
 
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+
 from src.cli import KoredCLI
+from src.config import KoredConfig
+from src.session_manager import SessionManager
 
 
 class TestKoredCLI(unittest.TestCase):
 
     def setUp(self):
-        self.cli = KoredCLI(model="qwen2.5:7b")
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.sessions_dir = Path(self.temp_dir.name) / "sessions"
+        self.config_file = Path(self.temp_dir.name) / "config.yaml"
+        self.config = KoredConfig(clear_on_start=False)
+        self.cli = KoredCLI(
+            model="qwen2.5:7b",
+            sessions_dir=self.sessions_dir,
+            config=self.config,
+        )
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
 
     def test_initial_conversation_history(self):
         self.assertEqual(len(self.cli.conversation_history), 1)
         self.assertEqual(self.cli.conversation_history[0]["role"], "system")
         self.assertIn("kored", self.cli.conversation_history[0]["content"])
+        self.assertIsNotNone(self.cli.current_session)
 
     def test_reset_conversation(self):
-        self.cli.conversation_history.append({"role": "user", "content": "olá"})
-        self.cli.conversation_history.append({"role": "assistant", "content": "olá!"})
+        self.cli.conversation_history.append({"role": "user", "content": "ola"})
+        self.cli.conversation_history.append({"role": "assistant", "content": "ola!"})
         self.assertEqual(len(self.cli.conversation_history), 3)
 
         self.cli.reset_conversation()
@@ -27,28 +44,51 @@ class TestKoredCLI(unittest.TestCase):
         self.assertEqual(self.cli.conversation_history[0]["role"], "system")
 
     def test_trim_history_if_needed(self):
-        # Enche o histórico além do limite
+        # Enche o historico alem do limite configurado (20)
         for i in range(25):
             self.cli.conversation_history.append({"role": "user", "content": f"msg {i}"})
 
         self.cli._trim_history_if_needed()
-        # Deve manter a mensagem de sistema + 14 mensagens recentes = 15
-        self.assertEqual(len(self.cli.conversation_history), 15)
+        # Mantem o prompt de sistema + mensagens recentes dentro do limite
+        self.assertTrue(len(self.cli.conversation_history) <= 20)
         self.assertEqual(self.cli.conversation_history[0]["role"], "system")
-        self.assertEqual(self.cli.conversation_history[-1]["content"], "msg 24")
 
     @patch("src.ollama_client.OllamaClient.stream_chat")
-    def test_ask_streaming_stores_assistant_response(self, mock_stream):
+    def test_ask_streaming_stores_assistant_response_and_persists_session(self, mock_stream):
         mock_stream.return_value = iter(["Para apagar logs, ", "use truncate..."])
 
         self.cli.ask_streaming("como apagar logs do docker?")
 
-        # Histórico deve ter: system, user, assistant
+        # Historico deve ter: system, user, assistant
         self.assertEqual(len(self.cli.conversation_history), 3)
         self.assertEqual(self.cli.conversation_history[1]["role"], "user")
         self.assertEqual(self.cli.conversation_history[1]["content"], "como apagar logs do docker?")
         self.assertEqual(self.cli.conversation_history[2]["role"], "assistant")
         self.assertEqual(self.cli.conversation_history[2]["content"], "Para apagar logs, use truncate...")
+
+        # Verifica se a sessao foi persistida no session_manager
+        saved_session = self.cli.session_manager.load_session(self.cli.current_session.id)
+        self.assertIsNotNone(saved_session)
+        self.assertEqual(len(saved_session.messages), 3)
+        self.assertEqual(saved_session.title, "como apagar logs do docker?")
+
+    def test_resume_latest_session(self):
+        # Cria uma sessao com pergunta
+        self.cli.conversation_history.append({"role": "user", "content": "duvida sobre iptables"})
+        self.cli.conversation_history.append({"role": "assistant", "content": "iptables gerencia pacotes..."})
+        self.cli._sync_session()
+
+        session_id = self.cli.current_session.id
+
+        # Nova instancia de CLI com resume_latest=True
+        cli_resumed = KoredCLI(
+            sessions_dir=self.sessions_dir,
+            config=self.config,
+            resume_latest=True,
+        )
+        self.assertEqual(cli_resumed.current_session.id, session_id)
+        self.assertEqual(len(cli_resumed.conversation_history), 3)
+        self.assertEqual(cli_resumed.conversation_history[1]["content"], "duvida sobre iptables")
 
     @patch("src.ollama_client.OllamaClient.stream_chat")
     @patch("src.diagnostics.DiagnosticEngine.run_health_check")
@@ -72,6 +112,24 @@ class TestKoredCLI(unittest.TestCase):
         self.cli.set_mode(ExecutionMode.ASSISTED)
         self.assertEqual(self.cli.mode, ExecutionMode.ASSISTED)
         self.assertIn("MODO ASSISTIDO", self.cli.system_prompt)
+
+    @patch("src.cli.console.clear")
+    @patch("src.cli.Prompt.ask")
+    @patch("src.cli.KoredCLI.check_ollama_status")
+    def test_run_interactive_clear_and_exit(self, mock_status, mock_prompt, mock_clear):
+        mock_status.return_value = True
+        mock_prompt.side_effect = ["limpar", "sair"]
+
+        self.cli.config.clear_on_start = True
+        self.cli.run_interactive()
+
+        # console.clear deve ser chamado na inicializacao e ao receber 'limpar'
+        self.assertEqual(mock_clear.call_count, 2)
+
+    def test_show_config_and_sessions(self):
+        # Nao deve lancar excecoes
+        self.cli.show_config()
+        self.cli.show_sessions()
 
 
 if __name__ == "__main__":

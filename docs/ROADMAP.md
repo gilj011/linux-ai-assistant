@@ -50,11 +50,24 @@
 
 ---
 
-## Fase 6 — Configuracao do Usuario (Planejada)
+## Fase 6 — Configuracao do Usuario e Sessoes Persistentes (Concluida)
 
-- [ ] `config/kored.yaml` — modelo preferido, modo padrao, idioma, nivel de verbosidade.
-- [ ] Carregamento automatico das preferencias ao iniciar.
-- [ ] Comando `kored --config` para editar as preferencias sem abrir o arquivo manualmente.
+- [x] Configuracao persistente em `~/.config/kored/config.yaml` (`KoredConfig`).
+- [x] Parametros configuraveis: modelo, host Ollama, modo padrao, timeout, clear_on_start, limite de historico.
+- [x] Flag `kored --config` e comando interativo `config`.
+- [x] Gerenciador de sessoes persistentes (`SessionManager`) gravando em `~/.local/share/kored/sessions/`.
+- [x] Flags `--continue` / `-c` para retomar a conversa mais recente.
+- [x] Flags `--sessions` e `--session <id>`, comandos `sessoes`, `retomar <id>` e `nova`.
+- [x] Limpeza automatica de tela no inicio da sessao interativa e no comando `limpar`.
+- [x] Suite de testes expandida para 39 testes unitarios.
+
+---
+
+## Fase 7 — Inspecao do Ultimo Erro (kored fix) (Em Planejamento)
+
+- [ ] Comando `kored fix` / `kored --last` para capturar e analisar o ultimo comando que falhou no terminal do usuario (`~/.bash_history`, `~/.zsh_history`).
+- [ ] Deteccao automatica do contexto do erro e prescricao de solucao corretiva.
+- [ ] Proposta automatica de correcao assistida sob aprovacao `[s/N]`.
 
 ---
 

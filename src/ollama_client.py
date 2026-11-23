@@ -15,7 +15,7 @@ class OllamaClient:
         self,
         base_url: Optional[str] = None,
         model: str = "qwen2.5:7b",
-        timeout: int = 60,
+        timeout: int = 180,
     ):
         self.base_url = (base_url or os.getenv("OLLAMA_HOST", "http://localhost:11434")).rstrip("/")
         self.model = model
