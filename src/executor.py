@@ -87,8 +87,8 @@ class ControlledExecutor:
                 self.audit_logger.log_action("run_command", command, "EXECUTADO_SUCESSO", success_msg[:300], user_approved=True)
                 return True, success_msg
             else:
-                fail_msg = f"Codigo de erro {res.returncode}:\n{combined}"
-                self.audit_logger.log_action("run_command", command, "FALHA_EXECUCAO", fail_msg[:300], user_approved=True)
+                fail_msg = f"Codigo de retorno {res.returncode}:\n{combined}" if combined else f"Codigo de retorno {res.returncode} (sem ocorrencias / sem saida)"
+                self.audit_logger.log_action("run_command", command, "RETORNO_NAO_ZERO", fail_msg[:300], user_approved=True)
                 return False, fail_msg
         except subprocess.TimeoutExpired:
             timeout_msg = f"Tempo limite de execucao ({timeout}s) esgotado."

@@ -268,6 +268,7 @@ class KoredCLI:
             )
             return
 
+        executed_any = False
         for action in actions:
             console.print(
                 Panel(
@@ -294,20 +295,63 @@ class KoredCLI:
                         self.conversation_history.append({"role": "system", "content": f"[Acao executada com sucesso]: {msg}"})
                     else:
                         console.print(f"[bold red][FALHA][/bold red] {msg}\n")
+                        self.conversation_history.append({"role": "system", "content": f"[Falha na gravacao do arquivo]: {msg}"})
+                    executed_any = True
                 elif action.action_type == "run_command" and action.command:
                     console.print(f"[dim]Executando: {action.command}...[/dim]")
                     ok, msg = self.executor.execute_command(action.command)
-                    if ok:
-                        console.print(Panel(msg, title=f"Saida: {action.command}", border_style="green"))
-                        self.conversation_history.append({"role": "system", "content": f"[Comando executado]: {msg}"})
-                    else:
-                        console.print(Panel(msg, title="Erro na execucao do comando", border_style="red"))
+                    border_style = "green" if ok else "yellow"
+                    title_prefix = "Saida" if ok else "Retorno da execucao"
+                    console.print(Panel(msg, title=f"{title_prefix}: {action.command}", border_style=border_style))
+                    self.conversation_history.append({
+                        "role": "system",
+                        "content": f"[Resultado do comando '{action.command}']: {msg}"
+                    })
+                    executed_any = True
             else:
                 self.executor.audit_logger.log_action(action.action_type, target_desc, "CANCELADO_PELO_USUARIO", user_approved=False)
                 console.print("[dim]Acao cancelada pelo usuario. Nada foi alterado no sistema.[/dim]\n")
                 self.conversation_history.append({"role": "system", "content": "[Acao cancelada pelo usuario]"})
 
         self._sync_session()
+
+        if executed_any:
+            console.print()
+            self._generate_followup_response()
+
+    def _generate_followup_response(self) -> None:
+        """Gera resposta imediata do kored interpretando os resultados da acao executada."""
+        generator = self.client.stream_chat(messages=self.conversation_history)
+        first_token = ""
+
+        try:
+            with console.status(
+                "[bold cyan]kored interpretando resultado...[/bold cyan]",
+                spinner="dots",
+            ):
+                try:
+                    first_token = next(generator)
+                except StopIteration:
+                    first_token = ""
+
+            full_response = first_token
+            if full_response:
+                with Live(Markdown(ActionParser.strip_action_blocks(full_response)), console=console, refresh_per_second=10) as live:
+                    for token in generator:
+                        full_response += token
+                        clean_text = ActionParser.strip_action_blocks(full_response)
+                        live.update(Markdown(clean_text or full_response))
+
+            if full_response and not full_response.startswith("\n[Erro"):
+                self.conversation_history.append({"role": "assistant", "content": full_response})
+                self._sync_session()
+                # Se a analise gerar novas propostas subsequentes
+                self._handle_proposed_actions(full_response)
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow][Interrompido][/yellow]")
+        except Exception as e:
+            console.print(f"\n[red]Erro ao interpretar resultado:[/red] {str(e)}")
 
     def ask_streaming(self, question: str, is_explain_mode: bool = False) -> None:
         """Processa a consulta com streaming, memoria de contexto e deteccao de acoes."""
