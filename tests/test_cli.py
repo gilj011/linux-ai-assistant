@@ -131,6 +131,27 @@ class TestKoredCLI(unittest.TestCase):
         self.cli.show_config()
         self.cli.show_sessions()
 
+    @patch("src.ollama_client.OllamaClient.stream_chat")
+    def test_fix_command_with_explicit_command_and_error(self, mock_stream):
+        mock_stream.return_value = iter(["Causa: a porta 80 ja esta ocupada. ", "Execute ss -tulpn para verificar."])
+
+        self.cli.fix_command(
+            command="docker run -p 80:80 nginx",
+            error_output="Error response from daemon: driver failed: bind: address already in use",
+        )
+
+        self.assertEqual(len(self.cli.conversation_history), 3)
+        self.assertIn("docker run -p 80:80 nginx", self.cli.conversation_history[1]["content"])
+        self.assertIn("bind: address already in use", self.cli.conversation_history[1]["content"])
+        self.assertIn("porta 80 ja esta ocupada", self.cli.conversation_history[2]["content"])
+
+    @patch("src.shell_inspector.ShellInspector.get_last_command")
+    def test_fix_command_not_found_handling(self, mock_last_cmd):
+        mock_last_cmd.return_value = None
+        # Nao deve levantar excecoes e nem adicionar mensagens
+        self.cli.fix_command()
+        self.assertEqual(len(self.cli.conversation_history), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

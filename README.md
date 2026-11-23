@@ -59,6 +59,15 @@ Desenhado para ser uma ferramenta de cabeceira tanto para quem esta aprendendo a
 # Visualizar parametros de configuracao ativos (~/.config/kored/config.yaml)
 ./kored --config
 
+# Diagnosticar o ultimo comando que falhou no terminal (le o historico do Bash/Zsh)
+./kored fix
+
+# Diagnosticar um comando especifico que falhou
+./kored fix "docker compose up -d"
+
+# Diagnosticar passando a saida de erro diretamente via pipe
+docker compose up 2>&1 | ./kored fix
+
 # Consulta direta
 ./kored "como debugar conexoes TCP em estado TIME_WAIT com ss"
 
@@ -81,6 +90,8 @@ Desenhado para ser uma ferramenta de cabeceira tanto para quem esta aprendendo a
 | `nova` | Inicia uma nova sessao zerada sem sair do CLI |
 | `diag` | Executa varredura de saude do sistema |
 | `diag <servico>` | Diagnostica servico systemd especifico (ex: diag docker) |
+| `fix` | Analisa o ultimo comando que falhou no terminal do usuario |
+| `fix <comando>` | Analisa a falha de um comando especifico |
 | `historico` | Exibe o log de auditoria de acoes |
 | `config` | Exibe os parametros de configuracao ativos |
 | `modo` | Alterna entre Modo Seguro e Modo Assistido |

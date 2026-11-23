@@ -29,6 +29,7 @@ from src.ollama_client import OllamaClient
 from src.os_inspector import OSInspector, SystemContext
 from src.prompt_builder import PromptBuilder
 from src.session_manager import SessionData, SessionManager
+from src.shell_inspector import ShellInspector
 
 console = Console()
 
@@ -431,6 +432,69 @@ class KoredCLI:
         console.rule(style="dim")
         console.print()
 
+    def fix_command(self, command: Optional[str] = None, error_output: Optional[str] = None) -> None:
+        """Diagnostica o ultimo comando que falhou no shell e propoe solucao corretiva."""
+        target_cmd = command
+        if not target_cmd:
+            target_cmd = ShellInspector.get_last_command()
+
+        if not target_cmd and not error_output:
+            console.print(
+                Panel(
+                    "Nenhum comando recente encontrado no historico do shell (~/.bash_history ou ~/.zsh_history).\n\n"
+                    "Voce pode fornecer o comando diretamente:\n"
+                    "  [bold cyan]kored fix \"comando que falhou\"[/bold cyan]\n"
+                    "ou passar a saida de erro via pipe:\n"
+                    "  [bold cyan]comando 2>&1 | kored fix[/bold cyan]",
+                    title="kored fix :: Comando Nao Encontrado",
+                    border_style="yellow",
+                )
+            )
+            return
+
+        cmd_display = target_cmd or "Comando recebido via pipe"
+        title = f"[bold cyan]kored[/bold cyan] :: Inspecao de Erro: [bold yellow]{cmd_display}[/bold yellow]"
+
+        console.print()
+        console.rule(title)
+
+        fix_prompt = PromptBuilder.build_fix_prompt(cmd_display, error_output=error_output)
+
+        self.conversation_history.append({"role": "user", "content": fix_prompt})
+        self._trim_history_if_needed()
+
+        generator = self.client.stream_chat(messages=self.conversation_history)
+        first_token = ""
+
+        try:
+            with console.status("[bold cyan]kored diagnosticando falha e elaborando solucao...[/bold cyan]", spinner="dots"):
+                try:
+                    first_token = next(generator)
+                except StopIteration:
+                    first_token = ""
+
+            full_response = first_token
+            if full_response:
+                with Live(Markdown(ActionParser.strip_action_blocks(full_response)), console=console, refresh_per_second=10) as live:
+                    for token in generator:
+                        full_response += token
+                        live.update(Markdown(ActionParser.strip_action_blocks(full_response)))
+            else:
+                console.print("[yellow][Nenhuma correcao gerada pelo modelo][/yellow]")
+
+            if full_response and not full_response.startswith("\n[Erro"):
+                self.conversation_history.append({"role": "assistant", "content": full_response})
+                self._handle_proposed_actions(full_response)
+                self._sync_session()
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow][Interrompido][/yellow]")
+        except Exception as e:
+            console.print(f"\n[red]Erro durante a analise do erro:[/red] {str(e)}")
+
+        console.rule(style="dim")
+        console.print()
+
     def run_interactive(self) -> None:
         """Executa a sessao interativa do kored."""
         if self.config.clear_on_start:
@@ -509,6 +573,10 @@ class KoredCLI:
                 )
                 console.print(Panel(ctx_summary, title="kored :: Informacoes do Ambiente", border_style="green"))
                 continue
+            elif lower_cmd == "fix" or lower_cmd.startswith("fix "):
+                target_to_fix = user_input[3:].strip() if len(user_input) > 3 else None
+                self.fix_command(command=target_to_fix)
+                continue
             elif lower_cmd == "diag":
                 self.run_diagnostics()
                 continue
@@ -536,6 +604,8 @@ class KoredCLI:
                     "- [italic]'nova'[/italic]: cria uma nova sessao de conversa zerada\n"
                     "- [italic]'diag'[/italic]: varredura diagnostica de saude do sistema\n"
                     "- [italic]'diag <servico>'[/italic]: diagnostica servico systemd (ex: diag nginx)\n"
+                    "- [italic]'fix'[/italic]: analisa o ultimo comando executado no shell e propoe solucao\n"
+                    "- [italic]'fix <comando>'[/italic]: analisa a falha de um comando especifico\n"
                     "- [italic]'historico'[/italic]: exibe tabela de auditoria de acoes executadas\n"
                     "- [italic]'config'[/italic]: visualiza os parametros de configuracao ativos\n"
                     "- [italic]'limpar'[/italic]: limpa a tela e reinicia o contexto\n"
@@ -595,6 +665,13 @@ def main() -> None:
         help="Exibe os parametros de configuracao ativos e sai.",
     )
     parser.add_argument(
+        "--fix",
+        "-f",
+        nargs="?",
+        const="",
+        help="Analisa o ultimo comando que falhou no terminal ou o comando informado e propoe solucao.",
+    )
+    parser.add_argument(
         "--explain",
         "-e",
         action="store_true",
@@ -637,12 +714,30 @@ def main() -> None:
         resume_latest=args.resume_latest,
     )
 
+    # Captura dados de erro recebidos via pipe (se houver)
+    stdin_err = ShellInspector.read_stdin_if_available()
+
+    # Deteccao de acionamento do modo fix
+    is_fix_call = False
+    fix_target_cmd = None
+
+    if args.fix is not None:
+        is_fix_call = True
+        fix_target_cmd = args.fix.strip() if args.fix else None
+    elif args.query and args.query[0].lower() == "fix":
+        is_fix_call = True
+        fix_target_cmd = " ".join(args.query[1:]).strip() if len(args.query) > 1 else None
+
     if args.config:
         cli.show_config()
     elif args.sessions:
         cli.show_sessions()
     elif args.audit:
         cli.show_audit_history()
+    elif is_fix_call or (stdin_err and not args.query):
+        cli.print_banner()
+        cli.check_ollama_status()
+        cli.fix_command(command=fix_target_cmd, error_output=stdin_err)
     elif args.diag or args.service:
         cli.print_banner()
         cli.check_ollama_status()

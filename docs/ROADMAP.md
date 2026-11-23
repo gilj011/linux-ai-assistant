@@ -63,15 +63,20 @@
 
 ---
 
-## Fase 7 — Inspecao do Ultimo Erro (kored fix) (Em Planejamento)
+## Fase 7 — Inspecao do Ultimo Erro (kored fix) (Concluida)
 
-- [ ] Comando `kored fix` / `kored --last` para capturar e analisar o ultimo comando que falhou no terminal do usuario (`~/.bash_history`, `~/.zsh_history`).
-- [ ] Deteccao automatica do contexto do erro e prescricao de solucao corretiva.
-- [ ] Proposta automatica de correcao assistida sob aprovacao `[s/N]`.
+- [x] Modulo `ShellInspector` para leitura inteligente de historicos do Bash (`~/.bash_history`) e Zsh (`~/.zsh_history`).
+- [x] Limpeza automatica de timestamps do Zsh estendido e exclusao de chamadas do proprio `kored`.
+- [x] Suporte a leitura de `stdin` para diagnostico de saidas de erro via pipe (`comando 2>&1 | kored fix`).
+- [x] Construtor de prompt de correcao contextualizado (`build_fix_prompt`) com diagnostico, causa raiz, solucao e prevencao.
+- [x] Subcomando posicional `kored fix [comando]` e flag `--fix` / `-f`.
+- [x] Comando interativo `fix` dentro da sessao.
+- [x] Integracao ao autocompletar Bash.
+- [x] Suite de testes expandida para 47 testes unitarios.
 
 ---
 
-## Fase 7 — Diagnosticos Avancados (Planejada)
+## Fase 8 — Diagnosticos Avancados de Rede e Processos (Planejada)
 
 - [ ] Sondas de I/O de disco (`iostat`).
 - [ ] Sockets e portas abertas (`ss -tulpn`).

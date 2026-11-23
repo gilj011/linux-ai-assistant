@@ -2,6 +2,8 @@
 Construtor de prompts do kored contextualizados com o ambiente Linux.
 """
 
+from typing import Optional
+
 from src.executor import ExecutionMode
 from src.os_inspector import SystemContext
 
@@ -101,4 +103,22 @@ DIRETRIZES TÉCNICAS E DE COMPORTAMENTO:
             f"3. Causa Raiz Provavel: Explicacao tecnica de por que o problema ocorreu.\n"
             f"4. Acoes Corretivas: Comandos exatos para mitigar ou corrigir cada problema encontrado.\n"
             f"5. Verificacao: Comandos para confirmar que a correcao surtiu efeito."
+        )
+
+    @staticmethod
+    def build_fix_prompt(command: str, error_output: Optional[str] = None) -> str:
+        """Monta prompt para diagnosticar a falha de um comando e propor solucao corretiva."""
+        error_section = ""
+        if error_output:
+            error_section = f"\nSAIDA DE ERRO / LOG CAPTURADO:\n```text\n{error_output}\n```\n"
+
+        return (
+            f"O seguinte comando acabou de falhar ou apresentar problemas no terminal do usuario:\n\n"
+            f"```bash\n{command}\n```\n"
+            f"{error_section}\n"
+            f"ESTRUTURE SUA RESPOSTA DA SEGUINTE FORMA:\n"
+            f"1. Diagnostico do Erro: Identifique claramente o motivo ou a hipotese mais provavel da falha.\n"
+            f"2. Causa Raiz: Explique o que aconteceu (ex: permissao insuficiente, porta em uso, pacote ausente, sintaxe incorreta, servico inativo).\n"
+            f"3. Solucao Recomendada: Comando ou acao exata para corrigir o problema.\n"
+            f"4. Prevencao: Como evitar que este erro se repita."
         )
