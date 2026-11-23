@@ -41,19 +41,23 @@ Este documento acompanha as fases de planejamento, desenvolvimento e lançamento
 
 ---
 
-## Fase 4 — Modo Professor Linux
-**Objetivo:** Fortalecer a capacitação e aprendizado contínuo do usuário.
+## Fase 4 — Auditoria e Persistencia de Relatorios (Concluida)
+**Objetivo:** Rastreabilidade estrita de operacoes e historico de manutencoes.
 
-- [ ] Modo `--explain <comando>` para dissecção detalhada de sintaxe e flags.
-- [ ] Exercícios práticos e tutoriais passo a passo de conceitos fundamentais (permissões `chmod`/`chown`, links simbólicos, redirecionamentos).
-- [ ] Glossário interativo de termos do ecossistema Linux.
+- [x] Modulo de auditoria local (`AuditLogger` gravando em `~/.local/share/kored/audit.log`).
+- [x] Persistencia automatica de relatorios de diagnostico (`~/.local/share/kored/reports/`).
+- [x] Comando `historico` / `audit` interativo e flag CLI `--audit`.
+- [x] Registro detalhado de aprovacoes, recusas e resultados de execucao.
 
 ---
 
-## Fase 5 — Interface Gráfica e Distribuição
-**Objetivo:** Levar o assistente para além do terminal e facilitar a instalação em massa.
+## Fase 5 — Empacotamento e Distribuicao (Concluida)
+**Objetivo:** Permitir utilizacao universal no terminal e empacotamento nativo Debian.
 
-- [ ] Avaliação e desenvolvimento da interface gráfica (GTK4/Libadwaita ou Tauri).
-- [ ] Criação de pacote de instalação `.deb`.
-- [ ] Testes de compatibilidade em Ubuntu, Linux Mint, Debian, Pop!_OS e Zorin OS.
+- [x] Script de instalacao direta no sistema (`scripts/install.sh` / `make install`).
+- [x] Script de desinstalacao limpa (`scripts/uninstall.sh` / `make uninstall`).
+- [x] Autocompletar nativo para Bash (`scripts/kored_completion.bash`).
+- [x] Construcao automatizada de pacote `.deb` (`scripts/build_deb.sh` / `make deb`).
+- [x] Makefile com comandos de ciclo de vida (`test`, `install`, `deb`, `clean`).
+- [ ] Avaliacao futura de interface grafica desktop (GTK4/Libadwaita ou Tauri).
 - [ ] Documentação de instalação pública e lançamento v1.0.

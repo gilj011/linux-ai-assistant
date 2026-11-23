@@ -10,6 +10,8 @@ import subprocess
 from typing import Dict, List, Optional, Tuple
 import yaml
 
+from src.audit import AuditLogger
+
 
 class ExecutionMode(str, Enum):
     READONLY = "readonly"      # Modo Seguro: apenas consulta e diagnostico; nenhuma acao executada
@@ -21,8 +23,9 @@ class ControlledExecutor:
 
     DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "allowed_commands.yaml"
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Optional[Path] = None, audit_dir: Optional[Path] = None):
         self.config_path = config_path or self.DEFAULT_CONFIG_PATH
+        self.audit_logger = AuditLogger(base_dir=audit_dir)
         self.diagnostic_commands: List[str] = []
         self.allowed_actions: List[str] = []
         self.blocked_patterns: List[str] = []
@@ -54,7 +57,9 @@ class ControlledExecutor:
 
         for pattern in self.blocked_patterns:
             if pattern in cmd_clean:
-                return False, f"Comando bloqueado pelas diretrizes de seguranca (padrao proibido: '{pattern}')."
+                msg = f"Comando bloqueado pelas diretrizes de seguranca (padrao proibido: '{pattern}')."
+                self.audit_logger.log_action("run_command", cmd_clean, "BLOQUEADO_SEGURANCA", msg, user_approved=False)
+                return False, msg
 
         return True, "Comando compativel com as politicas de seguranca."
 
@@ -78,21 +83,27 @@ class ControlledExecutor:
             combined = output if output else error
 
             if res.returncode == 0:
-                return True, combined or "[Comando executado com sucesso sem saida no terminal]"
+                success_msg = combined or "[Comando executado com sucesso sem saida no terminal]"
+                self.audit_logger.log_action("run_command", command, "EXECUTADO_SUCESSO", success_msg[:300], user_approved=True)
+                return True, success_msg
             else:
-                return False, f"Codigo de erro {res.returncode}:\n{combined}"
+                fail_msg = f"Codigo de erro {res.returncode}:\n{combined}"
+                self.audit_logger.log_action("run_command", command, "FALHA_EXECUCAO", fail_msg[:300], user_approved=True)
+                return False, fail_msg
         except subprocess.TimeoutExpired:
-            return False, f"Tempo limite de execucao ({timeout}s) esgotado."
+            timeout_msg = f"Tempo limite de execucao ({timeout}s) esgotado."
+            self.audit_logger.log_action("run_command", command, "TEMPO_ESGOTADO", timeout_msg, user_approved=True)
+            return False, timeout_msg
         except Exception as e:
-            return False, f"Falha na execucao do comando: {str(e)}"
+            err_msg = f"Falha na execucao do comando: {str(e)}"
+            self.audit_logger.log_action("run_command", command, "FALHA_EXECUCAO", err_msg, user_approved=True)
+            return False, err_msg
 
     def write_file(self, target_path: str, content: str) -> Tuple[bool, str]:
         """Cria ou atualiza um arquivo de forma controlada."""
         try:
-            # Expande ~ para a pasta home real do usuario
             expanded_path = os.path.abspath(os.path.expanduser(target_path.strip()))
             
-            # Garante que diretorios pais existam
             parent_dir = os.path.dirname(expanded_path)
             if parent_dir and not os.path.exists(parent_dir):
                 os.makedirs(parent_dir, exist_ok=True)
@@ -100,8 +111,14 @@ class ControlledExecutor:
             with open(expanded_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            return True, f"Arquivo criado com sucesso: {expanded_path}"
+            success_msg = f"Arquivo criado com sucesso: {expanded_path}"
+            self.audit_logger.log_action("write_file", expanded_path, "EXECUTADO_SUCESSO", f"Bytes gravados: {len(content)}", user_approved=True)
+            return True, success_msg
         except PermissionError:
-            return False, f"Permissao negada para escrever em: {target_path}. Requer privilegios elevados."
+            err_msg = f"Permissao negada para escrever em: {target_path}. Requer privilegios elevados."
+            self.audit_logger.log_action("write_file", target_path, "FALHA_PERMISSAO", err_msg, user_approved=True)
+            return False, err_msg
         except Exception as e:
-            return False, f"Falha ao escrever arquivo: {str(e)}"
+            err_msg = f"Falha ao escrever arquivo: {str(e)}"
+            self.audit_logger.log_action("write_file", target_path, "FALHA_EXECUCAO", err_msg, user_approved=True)
+            return False, err_msg

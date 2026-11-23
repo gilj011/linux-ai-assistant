@@ -37,14 +37,50 @@ Ele foi desenhado para ser uma ferramenta de cabeceira tanto para quem esta apre
 ### Execucao
 
 ```bash
-# Modo Interativo Continuo (com historico de contexto)
+# Modo Interativo Continuo (Modo Seguro - Somente Leitura)
 ./kored
+
+# Modo Assistido (permite propor criacao de arquivos e comandos sob aprovacao humana)
+./kored --assisted
+# ou: ./kored -a
 
 # Consulta Rapida Direta
 ./kored "como debugar conexoes TCP em estado TIME_WAIT com ss"
 
-# Modo de Analise e Dissecacao Profunda de Comando
-./kored --explain "find /var/log -type f -name '*.gz' -mtime +30 -delete"
+# Varredura Diagnostica de Saude do Sistema
+./kored --diag
+
+# Diagnostico de Servico Especifico
+./kored --service docker
+
+# Historico de Auditoria de Acoes
+./kored --audit
+```
+
+---
+
+## Instalacao no Sistema e Empacotamento
+
+### Instalacao Rapida via Makefile
+Para poder chamar `kored` de qualquer pasta do terminal:
+
+```bash
+# Instalacao para o usuario atual (~/.local/bin/kored):
+make install
+
+# Ou instalacao global no sistema (requer sudo):
+sudo make install
+```
+
+### Geracao de Pacote Debian (.deb)
+Para gerar o pacote de instalacao `.deb` nativo para Pop!_OS, Ubuntu ou Debian:
+
+```bash
+make deb
+# O pacote sera gerado em dist/kored_0.3.0_all.deb
+
+# Para instalar o pacote:
+sudo dpkg -i dist/kored_0.3.0_all.deb
 ```
 
 ---

@@ -1,6 +1,6 @@
 """
 Interface de Linha de Comando (CLI) do kored — Linux Systems Intelligence.
-Suporta modos Somente Leitura e Assistido com autorizacao explicita de acoes.
+Suporta modos Somente Leitura e Assistido com autorizacao explicita de acoes e auditoria.
 """
 
 import argparse
@@ -18,6 +18,7 @@ from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.table import Table
 from rich.text import Text
 
 from src.action_parser import ActionParser, ProposedAction
@@ -40,10 +41,11 @@ class KoredCLI:
         model: str = "qwen2.5:7b",
         mode: ExecutionMode = ExecutionMode.READONLY,
         base_url: Optional[str] = None,
+        audit_dir: Optional[Path] = None,
     ):
         self.context: SystemContext = OSInspector.get_system_context()
         self.client = OllamaClient(base_url=base_url, model=model)
-        self.executor = ControlledExecutor()
+        self.executor = ControlledExecutor(audit_dir=audit_dir)
         self.mode = mode
         self.system_prompt = PromptBuilder.build_system_prompt(self.context, mode=self.mode)
         self.conversation_history: List[Dict[str, str]] = []
@@ -103,6 +105,40 @@ class KoredCLI:
             return False
         return True
 
+    def show_audit_history(self, limit: int = 15) -> None:
+        """Exibe o registro tabular das acoes de auditoria realizadas."""
+        actions = self.executor.audit_logger.get_recent_actions(limit=limit)
+        if not actions:
+            console.print(Panel("Nenhum registro de auditoria encontrado ate o momento.", title="Auditoria kored", border_style="cyan"))
+            return
+
+        table = Table(title="Historico de Auditoria e Acoes", border_style="cyan", header_style="bold cyan")
+        table.add_column("Data/Hora", style="dim", no_wrap=True)
+        table.add_column("Tipo", style="white")
+        table.add_column("Alvo / Comando", style="yellow")
+        table.add_column("Aprovado", style="magenta")
+        table.add_column("Status", style="green")
+
+        for act in actions:
+            approved_text = "Sim" if act.get("user_approved") else "Nao"
+            status = act.get("status", "")
+            status_style = "green" if "SUCESSO" in status else "red" if "FALHA" in status or "BLOQUEADO" in status else "yellow"
+            
+            target = act.get("target", "")
+            if len(target) > 40:
+                target = target[:37] + "..."
+
+            table.add_row(
+                act.get("timestamp", ""),
+                act.get("action_type", ""),
+                target,
+                approved_text,
+                f"[{status_style}]{status}[/{status_style}]",
+            )
+
+        console.print(table)
+        console.print(f"[dim]Arquivo de auditoria: {self.executor.audit_logger.audit_file}[/dim]\n")
+
     def _handle_proposed_actions(self, full_response: str) -> None:
         """Analisa respostas em busca de acoes propostas e gerencia a autorizacao do usuario."""
         actions = ActionParser.extract_actions(full_response)
@@ -136,6 +172,8 @@ class KoredCLI:
             except (KeyboardInterrupt, EOFError):
                 confirmation = "n"
 
+            target_desc = action.path if action.action_type == "write_file" else (action.command or "")
+
             if confirmation in ["s", "sim", "y", "yes"]:
                 if action.action_type == "write_file" and action.path:
                     ok, msg = self.executor.write_file(action.path, action.content or "")
@@ -153,6 +191,7 @@ class KoredCLI:
                     else:
                         console.print(Panel(msg, title="Erro na execucao do comando", border_style="red"))
             else:
+                self.executor.audit_logger.log_action(action.action_type, target_desc, "CANCELADO_PELO_USUARIO", user_approved=False)
                 console.print("[dim]Acao cancelada pelo usuario. Nada foi alterado no sistema.[/dim]\n")
                 self.conversation_history.append({"role": "system", "content": "[Acao cancelada pelo usuario]"})
 
@@ -207,7 +246,7 @@ class KoredCLI:
         console.print()
 
     def run_diagnostics(self, service_name: Optional[str] = None, user_notes: str = "") -> None:
-        """Executa sondas no sistema e aciona o motor de analise diagnostica da IA."""
+        """Executa sondas no sistema, persiste evidencias e aciona o motor analitico."""
         console.print()
         if service_name:
             target_desc = f"Servico '{service_name}'"
@@ -222,7 +261,16 @@ class KoredCLI:
 
         console.rule(title)
         
-        summary_lines = [f"Alvo inspecionado: {target_desc}", f"Sondas executadas: {len(report.results)}"]
+        # Salva copia do relatorio no historico de auditoria
+        saved_file = self.executor.audit_logger.save_diagnostic_report(report.target, report.to_prompt_context())
+
+        summary_lines = [
+            f"Alvo inspecionado: {target_desc}",
+            f"Sondas executadas: {len(report.results)}"
+        ]
+        if saved_file:
+            summary_lines.append(f"Relatorio persistido em: {saved_file}")
+
         for res in report.results:
             status_text = "[green]OK[/green]" if res.success else "[yellow]Aviso/Falha[/yellow]"
             summary_lines.append(f"- {res.name}: {status_text}")
@@ -274,7 +322,7 @@ class KoredCLI:
         self.check_ollama_status()
 
         console.print(
-            "[dim]Comandos: 'sair' | 'modo [seguro|assistido]' | 'diag' | 'diag <servico>' | 'limpar' | 'info'.[/dim]\n"
+            "[dim]Comandos: 'sair' | 'modo [seguro|assistido]' | 'diag' | 'historico' | 'limpar' | 'info'.[/dim]\n"
         )
 
         while True:
@@ -305,12 +353,16 @@ class KoredCLI:
             elif lower_cmd in ["modo assistido", "modo exec", "assist"]:
                 self.set_mode(ExecutionMode.ASSISTED)
                 continue
+            elif lower_cmd in ["historico", "audit", "logs"]:
+                self.show_audit_history()
+                continue
             elif lower_cmd == "info":
                 turns = (len(self.conversation_history) - 1) // 2
                 ctx_summary = (
                     self.context.to_prompt_context() +
                     f"\n- Modo Operacional: {self.mode.value.upper()}" +
-                    f"\n- Turnos de contexto ativos: {max(0, turns)}"
+                    f"\n- Turnos de contexto ativos: {max(0, turns)}" +
+                    f"\n- Auditoria: {self.executor.audit_logger.audit_file}"
                 )
                 console.print(Panel(ctx_summary, title="kored :: Informacoes do Ambiente", border_style="green"))
                 continue
@@ -335,12 +387,12 @@ class KoredCLI:
                 console.print(
                     "[bold]Instrucoes de uso do kored:[/bold]\n"
                     "- Digite consultas sobre comandos, diagnosticos ou administracao Linux\n"
-                    "- [italic]'modo seguro'[/italic] / [italic]'modo assistido'[/italic]: alterna a chave seletora de execucao\n"
-                    "- No modo assistido, kored pode propor criacao de arquivos e comandos com autorizacao humana [s/N]\n"
+                    "- [italic]'modo seguro'[/italic] / [italic]'modo assistido'[/italic]: altera chave seletora\n"
                     "- [italic]'diag'[/italic]: varredura diagnostica de saude do sistema\n"
                     "- [italic]'diag <servico>'[/italic]: diagnostica servico systemd (ex: diag nginx)\n"
+                    "- [italic]'historico'[/italic]: exibe tabela de auditoria de acoes executadas\n"
                     "- [italic]'limpar'[/italic]: reinicia a memoria da conversa\n"
-                    "- [italic]'info'[/italic]: dados da distro, kernel e modo ativo\n"
+                    "- [italic]'info'[/italic]: dados da distro, kernel e caminhos locais\n"
                     "- [italic]'sair'[/italic]: encerra o programa."
                 )
                 continue
@@ -393,13 +445,20 @@ def main() -> None:
         "-s",
         help="Executa diagnostico focado em um servico especifico (systemd).",
     )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Exibe os registros recentes de auditoria de operacoes e sai.",
+    )
 
     args = parser.parse_args()
     selected_mode = ExecutionMode.ASSISTED if args.assisted or args.mode == "assisted" else ExecutionMode.READONLY
 
     cli = KoredCLI(model=args.model, mode=selected_mode)
 
-    if args.diag or args.service:
+    if args.audit:
+        cli.show_audit_history()
+    elif args.diag or args.service:
         cli.print_banner()
         cli.check_ollama_status()
         cli.run_diagnostics(service_name=args.service)
